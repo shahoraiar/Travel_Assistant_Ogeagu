@@ -1,29 +1,51 @@
-# config/settings.py
-
 from pathlib import Path
 from datetime import timedelta
-import os # Make sure os is imported
-from dotenv import load_dotenv # Make sure dotenv is imported
+import os 
+from dotenv import load_dotenv 
+load_dotenv()
 
-# --- Load Environment Variables ---
-# This assumes your .env file is in the parent directory of this config folder
-# (i.e., your project root)
 dotenv_path = Path(__file__).resolve().parent.parent / '.env'
 load_dotenv(dotenv_path=dotenv_path)
 
-# --- Basic Django Setup ---
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Get SECRET_KEY from your .env file
 SECRET_KEY = os.getenv('SECRET_KEY', 'a-default-secret-key-for-safety')
 
-# Get DEBUG value from your .env file (should be 'True' for development)
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['*'] # This is okay for development, change for production
+ALLOWED_HOSTS = ['*'] 
 
-# --- Your Application Definitions ---
+# INSTALLED_APPS = [
+#     'django.contrib.admin',
+#     'django.contrib.auth',
+#     'django.contrib.contenttypes',
+#     'django.contrib.sessions',
+#     'django.contrib.messages',
+#     'django.contrib.staticfiles',
+#     "daphne",
+#     "channels",
+
+#     # Third-Party Apps
+#     'rest_framework',
+#     'rest_framework_simplejwt',
+#     'rest_framework_simplejwt.token_blacklist',
+#     'drf_spectacular',
+#     'corsheaders',
+
+#     # Your Apps
+#     'accounts',
+#     'events',
+#     'legal',
+#     'payment',
+#     'personalize',
+#     'support',
+    
+# ]
+
 INSTALLED_APPS = [
+    "daphne",   # must come first
+
+    # Django apps
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -32,6 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     # Third-Party Apps
+    "channels",
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
@@ -45,8 +68,8 @@ INSTALLED_APPS = [
     'payment',
     'personalize',
     'support',
-    
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -62,6 +85,7 @@ MIDDLEWARE = [
 # --- URL and WSGI Configuration (Updated for 'config' directory) ---
 ROOT_URLCONF = 'config.urls'
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = "config.asgi.application"
 
 # --- Database Configuration ---
 DATABASES = {
@@ -69,6 +93,13 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }
+}
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [("127.0.0.1", 6379)]},
+    },
 }
 
 # --- Authentication ---
@@ -128,18 +159,15 @@ SIMPLE_JWT = {
 CORS_ALLOW_ALL_ORIGINS = True # For development
 
 # --- Email Settings ---
-# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-# # DEFAULT_FROM_EMAIL = 'noreply@yourtravelapp.com'
-# DEFAULT_FROM_EMAIL = 'shahoraiar574@gmail.com'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'  
 EMAIL_PORT = 587  # SMTP server port (587 for TLS, 465 for SSL)
 EMAIL_USE_TLS = True 
-EMAIL_HOST_USER = 'shahoraiar574@gmail.com'  # SMTP server username
-EMAIL_HOST_PASSWORD = 'ftry fgud komj vanu'  # SMTP server password
-EMAIL_USE_SSL = False  # Set to True if using SSL
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+EMAIL_USE_SSL = False 
 
 # --- Stripe Settings (Loaded from .env file) ---
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')

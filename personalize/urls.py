@@ -12,6 +12,4 @@ urlpatterns = [
     path('days/<int:day_id>/add-spot/', add_tourist_spot, name='add-tourist-spot'),
     path('recommendations/', get_recommendations, name='get-recommendations'),
 
-    # path('ai/place', place_ai_response, name='place-ai-response'),
-    # path('google/token', get_google_access_token, name='get-google-token'),
 ]

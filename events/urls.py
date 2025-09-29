@@ -2,23 +2,19 @@ from django.urls import path
 from .views import *
 
 urlpatterns = [
-
     path('events/', event_list_create, name='event-list-create'),
-
-    # For "My Event" tab
-    path('events/my-events/', my_event_list, name='my-event-list'),
-
-    # For viewing, updating, and deleting a specific event
+    path('events/all-events/', all_event_list, name='all_event_list'),
     path('events/<int:pk>/', event_detail, name='event-detail'),
-    path('events/<int:event_id>/invite-list/', user_invite_list, name='user-invite-list'),
+    path('users/', all_user_list, name='all-user-list'),
+    path('send/invite/', send_invite, name='send-invite'),
+    # path('events/<int:event_id>/invite-list/', user_invite_list, name='user-invite-list'),
     
     # To send an invitation to a specific user for a specific event
-    path('events/<int:event_id>/invite/<int:user_id>/', send_invite, name='send-invite'),
+    # path('events/<int:event_id>/invite/<int:user_id>/', send_invite, name='send-invite'),
     # Get the list of all notifications for the logged-in user
     path('notifications/', notification_list, name='notification-list'),
-
-    # Mark all notifications as read
     path('notifications/mark-all-as-read/', mark_all_notifications_as_read, name='notifications-mark-all-read'),
+    
     # Mark a single notification as read (e.g., /api/events/notifications/5/mark-as-read/)
     path('notifications/<int:invitation_id>/mark-as-read/', mark_notification_as_read, name='notification-mark-read'),
 

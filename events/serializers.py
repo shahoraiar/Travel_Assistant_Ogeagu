@@ -30,10 +30,13 @@ class EventDetailSerializer(serializers.ModelSerializer):
         exclude = ['organizer'] # Exclude the user ID, but show everything else
         
 class UserInviteListSerializer(serializers.ModelSerializer):
-    """A lightweight serializer to list users for inviting."""
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'first_name', 'last_name'] # Add profile pic field if you have one
+        fields = ['id', 'full_name', 'email']  
+
+class SendInviteSerializer(serializers.Serializer):
+    receiver_user_id = serializers.IntegerField()
+    event_id = serializers.IntegerField()
 
 class InvitationSerializer(serializers.ModelSerializer):
     """Serializer for creating and viewing invitations."""
@@ -43,14 +46,7 @@ class InvitationSerializer(serializers.ModelSerializer):
         read_only_fields = ['inviter', 'status']
         
 class NotificationSerializer(serializers.ModelSerializer):
-    """
-    Serializer to display invitation notifications.
-    Includes nested data about the inviter and the event.
-    """
-    # Use a lightweight serializer for the inviter to avoid sending sensitive user data
     inviter = serializers.StringRelatedField(read_only=True)
-    
-    # Use a lightweight serializer for the event
     event_title = serializers.CharField(source='event.title', read_only=True)
     event_id = serializers.IntegerField(source='event.id', read_only=True)
 
@@ -63,5 +59,4 @@ class NotificationSerializer(serializers.ModelSerializer):
             'event_title',
             'status',
             'is_read',
-            'created_at'
         ]

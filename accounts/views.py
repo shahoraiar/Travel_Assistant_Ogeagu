@@ -163,10 +163,6 @@ def social_signup_signin(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def send_password_reset_otp(request):
-    """
-    Step 1: Send OTP for password reset.
-    Receives an email, verifies the user exists, and sends an OTP.
-    """
     email = request.data.get('email')
     if not email:
         return Response({"error": "email is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -185,7 +181,7 @@ def send_password_reset_otp(request):
         send_mail(
             subject,
             message,
-            settings.DEFAULT_FROM_EMAIL,
+            settings.EMAIL_HOST_USER,
             [email],
             fail_silently=False,
         )

@@ -54,10 +54,9 @@ class Invitation(models.Model):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        # Ensure a user can only be invited to the same event once.
-        unique_together = ('event', 'invitee')
         ordering = ['-created_at']
 
     def __str__(self):
