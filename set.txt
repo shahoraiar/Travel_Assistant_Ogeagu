@@ -1,0 +1,5 @@
+pip uninstall google-generativeai
+
+pip install google-auth google-auth-oauthlib google-auth-httplib2 requests
+
+pip install matplotlib
