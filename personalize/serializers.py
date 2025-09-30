@@ -8,15 +8,13 @@ class InterestSerializer(serializers.ModelSerializer):
         model = Interest
         fields = ['id', 'name', 'slug', 'created_at', 'updated_at']
 
-class UserPreferenceSerializer(serializers.ModelSerializer):
-    preferences = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=Interest.objects.all()
-    )
+class UserPreferenceListSerializer(serializers.ModelSerializer):
+    preferences_id = serializers.IntegerField(source='preferences.id', read_only=True)
+    preferences_name = serializers.CharField(source='preferences.name', read_only=True)
     class Meta:
         model = UserPreference
-        fields = ['user', 'preferences']
-        read_only_fields = ['user']
+        fields = ['preferences_id', 'preferences_name']
+
   
 class ItineraryCreateSerializer(serializers.ModelSerializer):
     class Meta:

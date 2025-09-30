@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import *
-from .serializers import InterestSerializer, UserPreferenceSerializer, ItineraryCreateSerializer, ItineraryReadSerializer, RecommendationRequestSerializer
+from .serializers import *
 from math import radians, sin, cos, sqrt, atan2
 from datetime import time
 from django.http import JsonResponse
@@ -28,34 +28,41 @@ def create_preference(request):
             {"error": "At least one preference must be provided, e.g. preferences: [1, 2, 3]"},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
-    interests = Interest.objects.all()
-    interest_ids = [interest.id for interest in interests]
-    invalid_ids = []
-    for pid in pref_ids:
-        if pid not in interest_ids:
-            print('not matched : ', pid)
-            invalid_ids.append(pid)
+
+    valid_ids = set(Interest.objects.values_list("id", flat=True))
+    invalid_ids = [pid for pid in pref_ids if pid not in valid_ids]
 
     if invalid_ids:
         return Response(
-            {"error": f"The following preference IDs are invalid: {invalid_ids}"},        
+            {"error": f"The following preference IDs are invalid: {invalid_ids}"},
             status=status.HTTP_400_BAD_REQUEST
         )
-            
-    user_pref, _ = UserPreference.objects.get_or_create(user=user)
+    
+    preferences_name = []
+    for pid in pref_ids:
+        print('processing id: ', pid)
+        pref, was_created = UserPreference.objects.get_or_create(
+            user=user,
+            preferences_id=pid
+        )
 
-    user_pref.preferences.add(*pref_ids)
-
-    prefs_data = list(user_pref.preferences.values("id", "name"))
+        preferences_name.append(pref.preferences.name)
 
     return Response(
         {
-            "message": "Preferences saved successfully",
-            "preferences": prefs_data
+            "message": "Preferences processed successfully",
+            "preference_name": preferences_name
         },
         status=status.HTTP_200_OK
     )
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_preference_list(request): 
+    user = request.user
+    user_pref = user.preferences.select_related('preferences')
+    serializer = UserPreferenceListSerializer(user_pref, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
@@ -70,86 +77,61 @@ def delete_preference(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    interests = Interest.objects.all()
-    interest_ids = [interest.id for interest in interests]
-    invalid_ids = []
-    for pid in pref_ids:
-        if pid not in interest_ids:
-            print('not matched : ', pid)
-            invalid_ids.append(pid)
+    valid_ids = set(Interest.objects.values_list("id", flat=True))
+    invalid_ids = [pid for pid in pref_ids if pid not in valid_ids]
 
     if invalid_ids:
         return Response(
-            {"error": f"The following preference IDs are invalid: {invalid_ids}"},        
+            {"error": f"The following preference IDs are invalid: {invalid_ids}"},
             status=status.HTTP_400_BAD_REQUEST
-        )
-            
-    try:
-        user_pref = UserPreference.objects.get(user=user)
-        interests = user_pref.preferences.all()  # This gives you all related interests
-        user_pref_ids = list(interests.values_list('id', flat=True))
-        print("user's interest IDs:", user_pref_ids)
-    except UserPreference.DoesNotExist:
-        return Response(
-            {"error": "No preferences found for the user."},
-            status=status.HTTP_404_NOT_FOUND
         )
     
-    # user_pref_ids = list(user_pref.values_list('id', flat=True))
-    # print('user_pref_ids: ', user_pref_ids)
-    not_owned = []
+    preferences_name = []
     for pid in pref_ids:
-        if pid not in user_pref_ids:
-            not_owned.append(pid)
-    if not_owned:
-        return Response(
-            {"error": f"User does not have these preferences: {not_owned}"},
-            status=status.HTTP_400_BAD_REQUEST
-        ) 
+        print('processing id: ', pid)
+        if UserPreference.objects.filter(user=user, preferences_id=pid).exists():
+            pref = UserPreference.objects.get(user=user, preferences_id=pid)
+            pref.delete()
+            preferences_name.append(pref.preferences.name)
+        else:
+            print(f"Preference ID {pid} not found for user {user.username}")
 
-    if not_owned:
-        return Response(
-            {"error": f"User does not have these preferences: {not_owned}"},
-            status=status.HTTP_400_BAD_REQUEST
-        ) 
-
-    user_pref.preferences.remove(*pref_ids)
-
-    prefs_data = list(user_pref.preferences.values("id", "name"))
 
     return Response(
         {
             "message": "Preferences deleted successfully",
-            "availble_preferences": prefs_data
+            "preference_name": preferences_name
         },
         status=status.HTTP_200_OK
     )
 
 # --- Function 3: Update user preference list ---
-@api_view(['PUT'])
-@permission_classes([IsAuthenticated])
-def update_preference(request):
-    """Updates (replaces) the user's entire preference list."""
-    user = request.user
-    serializer = UserPreferenceSerializer(data=request.data)
-    if serializer.is_valid():
-        preference_ids = serializer.validated_data['preferences']
-        user.preferences.set(preference_ids)
-        return Response({"message": "Preference list updated successfully."}, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+# @api_view(['PUT'])
+# @permission_classes([IsAuthenticated])
+# def update_preference(request):
+#     """Updates (replaces) the user's entire preference list."""
+#     user = request.user
+#     serializer = UserPreferenceSerializer(data=request.data)
+#     if serializer.is_valid():
+#         preference_ids = serializer.validated_data['preferences']
+#         user.preferences.set(preference_ids)
+#         return Response({"message": "Preference list updated successfully."}, status=status.HTTP_200_OK)
+#     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # --- Function 4: Create a new itinerary ---
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_itinerary(request):
     user = request.user
-    user_preferences = user.preferences 
+    user_preferences = user.preferences.select_related('preferences')
+    print('user preferences: ', user_preferences)
     
-    if not user_preferences.preferences.exists():
+    if not user_preferences.exists():
         return Response(
             {"error": "Your preference list is empty. Please choose at least one interest to create an itinerary."},
             status=status.HTTP_400_BAD_REQUEST
         )
+    
     print('request data: ', request.data)
     serializer = ItineraryCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -173,6 +155,21 @@ def get_itinerary(request):
 
     serializer = ItineraryReadSerializer(itinerary, many=True) 
     return Response(serializer.data)
+
+@api_view(['GET']) 
+@permission_classes([IsAuthenticated])
+def most_visited_attractions(request):
+    try:
+        itinerary = Itinerary.objects.filter(
+            user=request.user,
+            end_date__gte=now().date()
+        )
+        print('itinerary: ', itinerary.destination)
+
+    except Itinerary.DoesNotExist:
+        return Response({"error": "Itinerary not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

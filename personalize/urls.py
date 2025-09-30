@@ -3,8 +3,9 @@ from .views import *
 
 urlpatterns = [
     path('interests/', interests, name='interests-list'),
+    path('preferences/user/list/', user_preference_list, name='user-preference-list'),
     path('preferences/create/', create_preference, name='create-preference'),
-    path('preferences/update/', update_preference, name='update-preference'),
+    # path('preferences/update/', update_preference, name='update-preference'),
     path('preferences/delete/', delete_preference, name='delete-preference'),
     path('itineraries/create/', create_itinerary, name='create-itinerary'),
     path('itineraries/', get_itinerary, name='get-itinerary'), 
