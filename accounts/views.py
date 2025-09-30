@@ -14,12 +14,10 @@ from django.core.mail import send_mail
 from django.conf import settings
 from drf_spectacular.utils import extend_schema
 
-@extend_schema(request=UserSignupSerializer)
+# @extend_schema(request=UserSignupSerializer)
 @api_view(['POST'])  
 @permission_classes([AllowAny])
 def signup(request):
-    print('requst data:', request.data)  # Debugging line to print incoming request data
-
     serializer = UserSignupSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
@@ -27,135 +25,44 @@ def signup(request):
 
     return Response({"satus": "success", "data": UserSignupSerializer(user).data}, status=status.HTTP_201_CREATED)
     
-    # --- Step 2: Verify OTP and Create User ---
-    # if 'otp' in request.data:
-    #     submitted_otp = request.data.get('otp')
-    #     email = request.data.get('email')
-
-    #     if not submitted_otp or not email:
-    #         return Response({"error": "Email and OTP are required for verification."}, status=status.HTTP_400_BAD_REQUEST)
-
-    #     # Retrieve stored session data
-    #     stored_otp = request.session.get('signup_otp')
-    #     otp_expiry_str = request.session.get('signup_otp_expiry')
-    #     user_data = request.session.get('signup_user_data')
-
-    #     if not all([stored_otp, otp_expiry_str, user_data]):
-    #         return Response({"error": "No pending registration found. Please start the signup process again."}, status=status.HTTP_400_BAD_REQUEST)
-
-    #     if email != user_data.get('email'):
-    #         return Response({"error": "Invalid email for this verification session."}, status=status.HTTP_400_BAD_REQUEST)
-
-    #     # Check for OTP expiration
-    #     otp_expiry = datetime.fromisoformat(otp_expiry_str)
-    #     if datetime.now(timezone.utc) > otp_expiry:
-    #         return Response({"error": "OTP has expired. Please request a new one."}, status=status.HTTP_400_BAD_REQUEST)
-
-    #     # Check if the submitted OTP is valid
-    #     if int(submitted_otp) != stored_otp:
-    #         return Response({"error": "Invalid OTP."}, status=status.HTTP_400_BAD_REQUEST)
-        
-    #     # If OTP is valid, proceed with user creation
-    #     serializer = UserSignupSerializer(data=user_data)
-    #     if serializer.is_valid():
-    #         serializer.save()
-    #         # Clear the session data after successful signup
-    #         request.session.flush()
-    #         return Response({"message": "Account created successfully!"}, status=status.HTTP_201_CREATED)
-    #     else:
-    #         # This should ideally not fail if validated before, but as a safeguard:
-    #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    # # --- Step 1: Validate Data and Send OTP ---
-    # else:
-    #     serializer = UserSignupSerializer(data=request.data)
-    #     if not serializer.is_valid():
-    #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    #     validated_data = serializer.validated_data
-    #     email = validated_data['email']
-
-    #     # Check if user already exists
-    #     if CustomUser.objects.filter(email=email).exists():
-    #         return Response({"error": "An account with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
-
-    #     # Generate a 6-digit OTP
-    #     otp = random.randint(100000, 999999)
-    #     # Set OTP expiration time (e.g., 2 minutes from now)
-    #     otp_expiry = datetime.now(timezone.utc) + timedelta(minutes=2)
-
-    #     # Store data in the session
-    #     request.session['signup_otp'] = otp
-    #     request.session['signup_otp_expiry'] = otp_expiry.isoformat()
-    #     request.session['signup_user_data'] = validated_data
-        
-    #     # Send OTP via email
-    #     try:
-    #         send_mail(
-    #             'Travel O - Your Account Verification OTP',
-    #             f'Your OTP to complete your registration is: {otp}',
-    #             settings.DEFAULT_FROM_EMAIL,
-    #             [email],
-    #             fail_silently=False,
-    #         )
-    #     except Exception as e:
-    #         return Response({"error": f"Failed to send OTP email: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    #     return Response({"message": "OTP sent to your email. Please use it to complete your registration."}, status=status.HTTP_200_OK)
-
+   
 class MyTokenObtainPairView(TokenObtainPairView):
-    
     serializer_class = MyTokenObtainPairSerializer
   
 @api_view(['POST'])
-@permission_classes([AllowAny])
-def social_signup_signin(request):
-    
+def social_signup_signup(request):
     email = request.data.get('email')
-    
-    first_name = request.data.get('first_name', '')
-    last_name = request.data.get('last_name', '')
+    full_name = request.data.get('full_name')
+    auth_provider = request.data.get('auth_provider')
 
-    if not email:
-        return Response(
-            {"message": "Email is required."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    if not email or not full_name or not auth_provider:
+        return Response({
+            "email": "This field is required." ,
+            "full_name": "This field is required." ,
+            "auth_provider": "This field is required." ,
+        }, status=400)
 
-    username = email # Define username from email
-
-  
     user, created = CustomUser.objects.get_or_create(
-        email=email,
-        defaults={
-            'username': username,
-            'first_name': first_name,
-            'last_name': last_name,
-            'is_active': True
-        }
+        email=email, 
+        defaults={'username': email, 'email':email, 'full_name': full_name}
     )
 
-
-    if not created:
-        updated = False
-        if first_name and user.first_name != first_name:
-            user.first_name = first_name
-            updated = True
-        if last_name and user.last_name != last_name:
-            user.last_name = last_name
-            updated = True
-        if updated:
-            user.save()
-
-    # create JWT tokens
     refresh = RefreshToken.for_user(user)
-    serializer = CustomUserSerializer(user)
+    access_token = refresh.access_token
+    token = {
+        'refresh': str(refresh),
+        'access': str(access_token),
+    }
+
+    user_details = {
+        'full_name': user.full_name,
+        'email': user.email,
+    }
 
     return Response({
-        'refresh_token': str(refresh),
-        'access_token': str(refresh.access_token),
-        'user_data': serializer.data,
-        'message': 'Successfully Created Account.' if created else 'Successfully Logged In.'
+        'message': 'Successfully authenticated.',
+        'token': token,
+        'user_details': user_details,
     }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
     
 
@@ -172,7 +79,6 @@ def send_password_reset_otp(request):
     except CustomUser.DoesNotExist:
         return Response({"error": "No account found with this email."}, status=status.HTTP_404_NOT_FOUND)
 
-    # Generate a 6-digit OTP
     otp = random.randint(1000, 9999)
     subject = 'Travel O - Forgot Password OTP'
     message = f'Your OTP code is {otp}. It is valid for 5 minutes.'
@@ -198,16 +104,12 @@ def send_password_reset_otp(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def verify_password_reset_otp(request):
-    """
-    Step 2: Verify the password reset OTP.
-    """
     submitted_otp = request.data.get('otp')
     email = request.data.get('email')
 
     if not submitted_otp or not email:
         return Response({"error": "'email' and 'otp' field are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Retrieve stored OTP data from the session
     if not CustomUser.objects.filter(email=email).exists():  
         return Response({"error": "No account found with this email."}, status=status.HTTP_404_NOT_FOUND)
     

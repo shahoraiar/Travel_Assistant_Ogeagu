@@ -91,22 +91,26 @@ def send_invite(request):
         status=Invitation.Status.PENDING
     )   
     invitation.save()
-
-    channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
-        f"user_{receiver_user.id}",
-        {
-            "type": "send_notification",
-            "content": {
-                "event": event.title,
-                "from": request.user.username,
-                "message": f"{request.user.username} invited you to event {event.title}."
+    try : 
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"user_{receiver_user.id}",
+            {
+                "type": "send_notification",
+                "content": {
+                    "event": event.title,
+                    "from": request.user.username,
+                    "message": f"{request.user.username} invited you to event {event.title}."
+                }
             }
-        }
-    )
+        )
 
-    invitation.status = Invitation.Status.ACCEPTED
-    invitation.save()
+        invitation.status = Invitation.Status.ACCEPTED
+        invitation.save()
+    except Exception as e:
+        print("Error sending notification:", e)
+        invitation.status = Invitation.Status.DECLINED
+        invitation.save()
 
     return Response({"message": f"{request.user.username} invited you to event {event.title}."}, status=status.HTTP_201_CREATED)
     
