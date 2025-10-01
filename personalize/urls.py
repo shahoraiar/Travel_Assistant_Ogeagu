@@ -16,6 +16,8 @@ urlpatterns = [
     # AI-powered itinerary generation for travel plans
     path('ai/itinerary/<int:id>/', generate_ai_detailed_itinerary, name='generate-ai-itinerary'),
 
+    path('suggest/restaurant/', nearest_restaurant, name="nearest_restaurant"),
+
 
     # path('itineraries/<int:itinerary_id>/complete/', complete_itinerary, name='complete-itinerary'),
 

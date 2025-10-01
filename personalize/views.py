@@ -14,6 +14,23 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 
+import requests
+import math
+from django.conf import settings
+
+SEARCH_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+PHOTO_BASE_URL = "https://maps.googleapis.com/maps/api/place/photo"
+
+API_KEY = settings.GOOGLE_MAPS_API_KEY
+
+# def haversine(lat1, lon1, lat2, lon2):
+#     R = 6371  # Earth radius in km
+#     dlat = math.radians(lat2 - lat1)
+#     dlon = math.radians(lon2 - lon1)
+#     a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+#     return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1-a)))
+
 # Import from your new modules
 from . import utils
 from . import ai
@@ -115,17 +132,17 @@ def delete_preference(request):
     )
 
 # --- Function 3: Update user preference list ---
-@api_view(['PUT'])
-@permission_classes([IsAuthenticated])
-def update_preference(request):
-    """Updates (replaces) the user's entire preference list."""
-    user = request.user
-    serializer = UserPreferenceSerializer(data=request.data)
-    if serializer.is_valid():
-        preference_ids = serializer.validated_data['preferences']
-        user.preferences.set(preference_ids)
-        return Response({"message": "Preference list updated successfully."}, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+# @api_view(['PUT'])
+# @permission_classes([IsAuthenticated])
+# def update_preference(request):
+#     """Updates (replaces) the user's entire preference list."""
+#     user = request.user
+#     serializer = UserPreferenceSerializer(data=request.data)
+#     if serializer.is_valid():
+#         preference_ids = serializer.validated_data['preferences']
+#         user.preferences.set(preference_ids)
+#         return Response({"message": "Preference list updated successfully."}, status=status.HTTP_200_OK)
+#     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 
@@ -169,12 +186,143 @@ def get_itinerary(request):
     serializer = ItineraryReadSerializer(itinerary, many=True) 
     return Response(serializer.data)
 
-@api_view(["GET"])
-def nearest_resturant(request):
-    ...
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1-a)))
+
+@api_view(["POST"])
+def nearest_restaurant(request):
+    lat = request.data.get("latitude")
+    lng = request.data.get("longitude")
+    radius = int(request.data.get("radius", 5000)) 
+
+    if not lat or not lng:
+        return Response({"error": "Please provide latitude and longitude"}, status=400)
+
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except ValueError:
+        return Response({"error": "Latitude and longitude must be numeric"}, status=400)
+
+    # Nearby search
+    search_params = {
+        "location": f"{lat},{lng}",
+        "radius": radius,
+        "type": "restaurant",
+        "key": API_KEY
+    }
+
+    try:
+        search_resp = requests.get(SEARCH_URL, params=search_params)
+        search_data = search_resp.json()
+
+        if search_data.get("status") != "OK":
+            return Response({"error": search_data.get("status")}, status=400)
+
+        restaurants = []
+
+        for place in search_data.get("results", []):
+            place_id = place.get("place_id")
+            place_lat = place["geometry"]["location"]["lat"]
+            place_lng = place["geometry"]["location"]["lng"]
+            distance_km = haversine(lat, lng, place_lat, place_lng)
+
+            restaurant_info = {
+                "name": place.get("name"),
+                "location_name": place.get("vicinity"),
+                "coordinates": {"latitude": place_lat, "longitude": place_lng},
+                "distance_km": round(distance_km, 2),
+                "opening_hours": [],
+                "phone": None,
+                "email": None,
+                "website": None,
+                "facebook": None,
+                "instagram": None,
+                "description": None,
+                "reviews_summary": {}, 
+                "reviews": [],
+                "total_reviews": 0,
+                "total_rating": 0.0,
+                "photos": [],
+                "map_link": f"https://www.google.com/maps/search/?api=1&query={place_lat},{place_lng}"
+            }
+
+            if place_id:
+                details_params = {
+                    "place_id": place_id,
+                    "fields": "name,formatted_address,formatted_phone_number,website,opening_hours,editorial_summary,reviews,photos",
+                    "key": API_KEY
+                }
+                details_resp = requests.get(DETAILS_URL, params=details_params)
+                details_data = details_resp.json()
+
+                if details_data.get("status") == "OK":
+                    result = details_data.get("result", {})
+
+                    # Basic info
+                    restaurant_info["description"] = result.get("editorial_summary", {}).get("overview", "")
+                    restaurant_info["phone"] = result.get("formatted_phone_number")
+                    restaurant_info["website"] = result.get("website")
+                    restaurant_info["opening_hours"] = result.get("opening_hours", {}).get("weekday_text", [])
+                    restaurant_info["total_reviews"] = result.get("user_ratings_total", 0)
+                    restaurant_info["total_rating"] = result.get("rating", 0.0)
+
+                    # Photos
+                    photos = result.get("photos", [])
+                    for photo in photos[:10]:
+                        ref = photo.get("photo_reference")
+                        if ref:
+                            restaurant_info["photos"].append(f"{PHOTO_BASE_URL}?maxwidth=800&photoreference={ref}&key={API_KEY}")
+
+                    # Reviews & rating breakdown
+                    reviews = result.get("reviews", [])
+                    star_count = {str(i): 0 for i in range(1,6)}
+                    for review in reviews:
+                        rating = review.get("rating")
+                        if rating:
+                            star_count[str(int(rating))] += 1
+                            restaurant_info["reviews"].append({
+                                "author": review.get("author_name"),
+                                "rating": rating,
+                                "text": review.get("text"),
+                                "time": review.get("relative_time_description")
+                            })
+                    restaurant_info["reviews_summary"] = star_count
+
+            restaurants.append(restaurant_info)
+
+        # restaurants.sort(key=lambda x: x["distance_km"])
+
+        return Response(restaurants, status=200)  
+
+    except requests.RequestException as e:
+        return Response({"error": str(e)}, status=500)
 
 
+# @api_view(["POST"])
+# def nearest_restaurant(request):
+#     lat = request.data.get("latitude")
+#     lng = request.data.get("longitude")
 
+#     if not lat or not lng:
+#         return Response({"error": "Please provide latitude and longitude"}, status=400)
+
+#     try:
+#         lat = float(lat)
+#         lng = float(lng)
+#     except ValueError:
+#         return Response({"error": "Latitude and longitude must be numeric"}, status=400)
+
+#     query_url = (
+#         f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+#         f"?location={lat},{lng}&radius=500&type=restaurant&key={API_KEY}"
+#     )
+
+#     return Response({"query_url": query_url})
 
 @api_view(["GET"])
 def generate_ai_detailed_itinerary(request, id):

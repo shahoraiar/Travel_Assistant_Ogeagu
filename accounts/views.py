@@ -4,9 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken  # Import RefreshToken
-from .serializers import (UserSignupSerializer, MyTokenObtainPairSerializer,
-CustomUserSerializer, PasswordResetSerializer, ChangePasswordSerializer, EmailChangeRequestSerializer,
-UserProfileUpdateSerializer)
+from .serializers import *
 from .models import CustomUser
 import random
 from datetime import datetime, timedelta, timezone
