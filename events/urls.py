@@ -14,16 +14,18 @@ urlpatterns = [
     # Get the list of all notifications for the logged-in user
     path('notifications/', notification_list, name='notification-list'),
     path('notifications/mark-all-as-read/', mark_all_notifications_as_read, name='notifications-mark-all-read'),
-    
+
+    path('for-you/', event_for_you, name='events-for-you'), 
+
     # Mark a single notification as read (e.g., /api/events/notifications/5/mark-as-read/)
-    path('notifications/<int:invitation_id>/mark-as-read/', mark_notification_as_read, name='notification-mark-read'),
+    # path('notifications/<int:invitation_id>/mark-as-read/', mark_notification_as_read, name='notification-mark-read'),
 
-    # Respond to a specific invitation (e.g., /api/events/invitations/5/respond/)
-    path('invitations/<int:invitation_id>/respond/', respond_to_invitation, name='respond-to-invitation'),
-    # To add or remove a bookmark for a specific event
-    path('events/<int:event_id>/bookmark/', toggle_bookmark, name='event-bookmark-toggle'),
+    # # Respond to a specific invitation (e.g., /api/events/invitations/5/respond/)
+    # path('invitations/<int:invitation_id>/respond/', respond_to_invitation, name='respond-to-invitation'),
+    # # To add or remove a bookmark for a specific event
+    # path('events/<int:event_id>/bookmark/', toggle_bookmark, name='event-bookmark-toggle'),
 
-    # To get the list of all of the user's bookmarked events
-    path('bookmarks/', bookmarked_events_list, name='bookmark-list'),
+    # # To get the list of all of the user's bookmarked events
+    # path('bookmarks/', bookmarked_events_list, name='bookmark-list'),
 ]
 

@@ -31,6 +31,28 @@ def all_event_list(request):
     serializer = EventListSerializer(events, many=True)
     return Response(serializer.data)
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def event_for_you(request):
+    user = request.user
+    itenaries = user.itineraries.filter(end_date__gte=now().date()) # User Itinerary 
+    events = Event.objects.filter(event_date__gte=now().date())
+
+    match_events = []
+    for itenary in itenaries:
+        matched = events.filter(
+            Q(venue_name__icontains=itenary.destination)|
+            Q(address__icontains=itenary.destination)
+        ) 
+        match_events.extend(matched)
+
+    # print("Matched Events:", match_events) 
+
+    serializer = EventListSerializer(match_events, many=True)
+    return Response(serializer.data)
+
+
+
 @api_view(['GET', 'PATCH', 'DELETE'])
 def event_detail(request, pk):
     try:
