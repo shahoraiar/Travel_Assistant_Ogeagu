@@ -15,6 +15,10 @@ class Interest(models.Model):
     def __str__(self):
         return f"{self.name} -- {self.slug}"
 
+    
+
+# models.py (corrected UserPreference)
+
 class UserPreference(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="preferences")
     preferences = models.ForeignKey(Interest, on_delete=models.CASCADE, related_name='preferred_by') 
@@ -23,8 +27,11 @@ class UserPreference(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        # prefs = ", ".join([p.name for p in self.preferences.all()])
-        return f"{self.user.username} -- {self.preferences.name}"
+        # This joins the names of all related Interest objects into a single string.
+        prefs = ", ".join([p.name for p in self.preferences.all()])
+        return f"{self.user.username}'s Interests: {prefs}"
+    
+
 
 
 class Itinerary(models.Model):

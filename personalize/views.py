@@ -10,6 +10,15 @@ from django.http import JsonResponse
 import json
 from django.utils.timezone import now
 
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
+# Import from your new modules
+from . import utils
+from . import ai
+from .models import Itinerary
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def interests(request):
@@ -106,17 +115,19 @@ def delete_preference(request):
     )
 
 # --- Function 3: Update user preference list ---
-# @api_view(['PUT'])
-# @permission_classes([IsAuthenticated])
-# def update_preference(request):
-#     """Updates (replaces) the user's entire preference list."""
-#     user = request.user
-#     serializer = UserPreferenceSerializer(data=request.data)
-#     if serializer.is_valid():
-#         preference_ids = serializer.validated_data['preferences']
-#         user.preferences.set(preference_ids)
-#         return Response({"message": "Preference list updated successfully."}, status=status.HTTP_200_OK)
-#     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_preference(request):
+    """Updates (replaces) the user's entire preference list."""
+    user = request.user
+    serializer = UserPreferenceSerializer(data=request.data)
+    if serializer.is_valid():
+        preference_ids = serializer.validated_data['preferences']
+        user.preferences.set(preference_ids)
+        return Response({"message": "Preference list updated successfully."}, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 # --- Function 4: Create a new itinerary ---
 @api_view(['POST'])
@@ -141,6 +152,7 @@ def create_itinerary(request):
 
     return Response(ItineraryCreateSerializer(itinerary).data, status=status.HTTP_201_CREATED)
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_itinerary(request):
@@ -156,19 +168,201 @@ def get_itinerary(request):
     serializer = ItineraryReadSerializer(itinerary, many=True) 
     return Response(serializer.data)
 
-@api_view(['GET']) 
-@permission_classes([IsAuthenticated])
-def most_visited_attractions(request):
-    try:
-        itinerary = Itinerary.objects.filter(
-            user=request.user,
-            end_date__gte=now().date()
-        )
-        print('itinerary: ', itinerary.destination)
 
+
+
+
+
+@api_view(["GET"])
+def generate_ai_detailed_itinerary(request, pk):
+    """
+    Generate AI-powered detailed itinerary with real place details
+    """
+    try:
+        itinerary = Itinerary.objects.get(pk=pk)
     except Itinerary.DoesNotExist:
-        return Response({"error": "Itinerary not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"error": f"Itinerary with ID {pk} not found."}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Validate and parse destination coordinates
+    try:
+        if not itinerary.destination or ',' not in itinerary.destination:
+            return Response(
+                {"error": "Invalid destination format. Expected 'latitude, longitude'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        lat_str, lng_str = itinerary.destination.split(',')
+        dest_lat, dest_lng = float(lat_str.strip()), float(lng_str.strip())
+        
+        # Validate coordinate ranges
+        if not (-90 <= dest_lat <= 90) or not (-180 <= dest_lng <= 180):
+            return Response(
+                {"error": "Invalid coordinate values."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+    except (ValueError, AttributeError, TypeError):
+        return Response(
+            {"error": "Invalid destination format. Expected 'latitude, longitude'."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+        
+    # Determine trip duration with better validation
+    duration = calculate_trip_duration(itinerary)
+    if duration <= 0:
+        return Response(
+            {"error": "Could not determine a valid trip duration. Please provide either start/end dates or duration."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Get destination name from coordinates
+        destination_name = utils.get_location_name_from_coords(dest_lat, dest_lng)
+        if not destination_name or destination_name == "Unknown Location":
+            return Response(
+                {"error": "Could not determine destination name from coordinates."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Generate AI plan
+        ai_plan = ai.generate_ai_plan(
+            duration=duration,
+            destination_name=destination_name,
+            trip_type=itinerary.get_trip_type_display(),
+            budget=itinerary.get_budget_display()
+        )
+
+        # Validate AI response structure
+        if not ai_plan or not isinstance(ai_plan.get("itinerary_plan"), list):
+            return Response(
+                {"error": "AI service returned invalid itinerary structure."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Enrich with real place details
+        final_itinerary = enrich_itinerary_with_places(
+            ai_plan["itinerary_plan"], 
+            dest_lat, 
+            dest_lng, 
+            destination_name
+        )
+
+        return Response(
+            {
+                "itinerary_plan": final_itinerary,
+                "destination_name": destination_name,
+                "duration": duration,
+                "trip_type": itinerary.get_trip_type_display(),
+                "budget": itinerary.get_budget_display()
+            }, 
+            status=status.HTTP_200_OK
+        )
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"External API error: {str(e)}")
+        return Response(
+            {"error": "Service temporarily unavailable. Please try again later."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in itinerary generation: {str(e)}")
+        return Response(
+            {"error": "An unexpected error occurred while generating your itinerary."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def calculate_trip_duration(itinerary):
+    """Calculate trip duration from dates or duration field"""
+    if itinerary.start_date and itinerary.end_date:
+        duration = (itinerary.end_date - itinerary.start_date).days + 1
+        if duration > 0:
+            return duration
     
+    # Fallback to duration field
+    duration_map = {
+        '3_DAYS': 3, 
+        '5_DAYS': 5, 
+        '1_WEEK': 7, 
+        '10_DAYS': 10, 
+        '2_WEEKS': 14
+    }
+    return duration_map.get(itinerary.duration, 0)
+
+
+def enrich_itinerary_with_places(ai_plan, dest_lat, dest_lng, destination_name):
+    """Enrich AI-generated plan with real place details"""
+    final_itinerary = []
+    
+    for day_plan in ai_plan:
+        enriched_activities = []
+        
+        for activity in day_plan.get("activities", []):
+            search_query = activity.get("search_query", activity.get("title", ""))
+            if not search_query:
+                continue
+                
+            place_details = utils.get_actual_places_details(
+                search_query, 
+                dest_lat, 
+                dest_lng
+            )
+            
+            if place_details:
+                enriched_activities.append({
+                    "title": place_details.get("name", activity["title"]),
+                    "location": place_details.get("formatted_address", destination_name),
+                    "description": place_details.get("description", f"A highly-rated spot for {activity['title'].lower()}."),
+                    "rating": place_details.get("rating"),
+                    "place_id": place_details.get("place_id"),
+                    "types": place_details.get("types", []),
+                    "user_ratings_total": place_details.get("user_ratings_total"),
+                    "original_activity": activity["title"]
+                })
+            else:
+                # Fallback to AI-generated activity
+                enriched_activities.append({
+                    "title": activity["title"],
+                    "location": destination_name,
+                    "description": activity.get("description", "A suggested activity."),
+                    "rating": None,
+                    "place_id": None,
+                    "original_activity": activity["title"]
+                })
+        
+        final_itinerary.append({
+            "day": day_plan.get("day"),
+            "theme": day_plan.get("theme", ""),
+            "activities": enriched_activities
+        })
+    
+    return final_itinerary
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @api_view(['POST'])
@@ -202,6 +396,8 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 
     distance = R * c
     return distance
+
+
 
 # --- THE NEW RECOMMENDATION VIEW ---
 @api_view(['POST'])

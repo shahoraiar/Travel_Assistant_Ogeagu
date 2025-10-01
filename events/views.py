@@ -11,6 +11,7 @@ from django.db.models import Q
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def event_list_create(request):

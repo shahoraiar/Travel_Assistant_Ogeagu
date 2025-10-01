@@ -13,4 +13,10 @@ urlpatterns = [
     path('days/<int:day_id>/add-spot/', add_tourist_spot, name='add-tourist-spot'),
     path('recommendations/', get_recommendations, name='get-recommendations'),
 
+    # AI-powered itinerary generation for travel plans
+    path('ai/itinerary/<int:pk>/', generate_ai_detailed_itinerary, name='generate-ai-itinerary'),
+
+
+    # path('itineraries/<int:itinerary_id>/complete/', complete_itinerary, name='complete-itinerary'),
+
 ]
