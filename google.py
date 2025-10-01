@@ -1,32 +1,28 @@
 import requests
-import json
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
-API_KEY = "AIzaSyDy8Q6MoVTQqGdWvypYZ1BDHzHv2Go_tHE"
-QUERY = "cafes near mohakhali aqua Tower, dhaka" # Example query
-BASE_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")  # or paste your key here
+print('API KEY : ', API_KEY)
+LATITUDE = 21.447194
+LONGITUDE = 91.958361
 
+url = "https://maps.googleapis.com/maps/api/geocode/json"
 params = {
-    "query": QUERY,
+    "latlng": f"{LATITUDE},{LONGITUDE}",
     "key": API_KEY
 }
 
-try:
-    response = requests.get(BASE_URL, params=params)
-    response.raise_for_status() 
-    data = response.json()
+response = requests.get(url, params=params)
+data = response.json()
 
-    if data["status"] == "OK":
-        print("Search Results:")
-        for place in data["results"]:
-            print(place)  # Print the entire place dictionary
-            # print(f"  Name: {place.get('name')}")
-            # print(f"  Address: {place.get('formatted_address')}")
-            # print(f"  Rating: {place.get('rating')}")
-            print("-" * 20)
-    else:
-        print(f"Error: {data['status']} - {data.get('error_message', 'No specific error message.')}")
-
-except requests.exceptions.RequestException as e:
-    print(f"Request failed: {e}")
-except json.JSONDecodeError:
-    print("Failed to decode JSON response.")
+if data["status"] == "OK":
+    # Best match (formatted address)
+    print("Formatted Address:", data["results"][0]["formatted_address"])
+    
+    # All possible address components
+    for result in data["results"]:
+        print(result["formatted_address"])
+else:
+    print("Error:", data["status"])

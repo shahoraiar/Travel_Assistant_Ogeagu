@@ -28,11 +28,8 @@ class UserPreference(models.Model):
 
     def __str__(self):
         # This joins the names of all related Interest objects into a single string.
-        prefs = ", ".join([p.name for p in self.preferences.all()])
-        return f"{self.user.username}'s Interests: {prefs}"
-    
-
-
+        # prefs = ", ".join([p.name for p in self.preferences.all()])
+        return f"{self.user.username}'s Interests: {self.preferences.name}"
 
 class Itinerary(models.Model):
     TRIP_TYPES = [('SOLO', 'Solo'), ('COUPLE', 'Couple'), ('FAMILY', 'Family'), ('GROUP', 'Group')]
@@ -40,7 +37,9 @@ class Itinerary(models.Model):
     DURATIONS = [('3_DAYS', '3 days'), ('5_DAYS', '5 days'), ('1_WEEK', '1 week'), ('10_DAYS', '10 days'), ('2_WEEKS', '2 weeks')]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='itineraries')
-    destination = models.CharField(max_length=255) 
+    destination_name = models.CharField(max_length=255)
+    latitude = models.CharField()
+    longitude = models.CharField() 
 
     trip_type = models.CharField(max_length=10, choices=TRIP_TYPES, default='SOLO')
     budget = models.CharField(max_length=10, choices=BUDGETS, default='50-100')
@@ -54,7 +53,7 @@ class Itinerary(models.Model):
     updated_at = models.DateTimeField(auto_now=True)  
 
     def __str__(self):
-        return f"{self.user.username} -- {self.destination}" 
+        return f"{self.user.username} -- {self.destination_name}" 
     
 class Day(models.Model):
     itinerary = models.ForeignKey(Itinerary, on_delete=models.CASCADE, related_name="days")

@@ -133,6 +133,7 @@ def update_preference(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_itinerary(request):
+    print('create itinerary request : ', request)
     user = request.user
     user_preferences = user.preferences.select_related('preferences')
     print('user preferences: ', user_preferences)
@@ -157,7 +158,7 @@ def create_itinerary(request):
 @permission_classes([IsAuthenticated])
 def get_itinerary(request):
     try:
-        print('time : ', now().date())
+        # print('time : ', now().date())
         itinerary = Itinerary.objects.filter(
             user=request.user,
             end_date__gte=now().date()  
@@ -168,7 +169,9 @@ def get_itinerary(request):
     serializer = ItineraryReadSerializer(itinerary, many=True) 
     return Response(serializer.data)
 
-
+@api_view(["GET"])
+def nearest_resturant(request):
+    ...
 
 
 

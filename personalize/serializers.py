@@ -20,7 +20,7 @@ class ItineraryCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Itinerary
         fields = [
-            'id', 'destination', 'trip_type', 'budget', 'duration', 'start_date', 'end_date'
+            'id', 'destination_name', 'latitude', 'longitude', 'trip_type', 'budget', 'duration', 'start_date', 'end_date'
         ]
         read_only_fields = ['id', ]
 
@@ -69,7 +69,7 @@ class ItineraryReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Itinerary
         fields = [
-            'id', 'destination', 'trip_type', 'budget',
+            'id', 'destination_name', 'latitude', 'longitude', 'trip_type', 'budget',
             'duration', 'start_date', 'end_date', 
             'days_left', 'planning_progress'
         ]
