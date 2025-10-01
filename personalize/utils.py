@@ -24,7 +24,7 @@ PHOTO_BASE_URL = "https://maps.googleapis.com/maps/api/place/photo"
 SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 REVERSE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 
-API_KEY = "AIzaimport requests
+
 import os
 import logging
 from django.conf import settings
