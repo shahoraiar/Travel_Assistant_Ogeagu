@@ -374,110 +374,13 @@ def enrich_itinerary_with_places(ai_plan, dest_lat, dest_lng, destination_name):
 
 
 
-# import google.generativeai as genai
-# import requests
 
-# genai.configure(api_key="AIzaSyDy8Q6MoVTQqGdWvypYZ1BDHzHv2Go_tHE")
-# @api_view(["POST"])
-# def place_ai_response(request):
-#     # prompt = request.data.get("prompt")
-#     # if not prompt:
-#     #     return Response({"error": "Prompt is required"}, status=400)
 
-#     model = genai.GenerativeModel("gemini-pro")
-#     response = model.generate_content("dhaka")
 
-#     return Response({"response": response.text})
 
-# Configure Gemini
-# GEMINI_API_KEY = "AIzaSyDKGP3QI-1x7BSvpcXQS5gs5YeU9IDhAYM"
-# PLACES_API_KEY = "AIzaSyDy8Q6MoVTQqGdWvypYZ1BDHzHv2Go_tHE"
 
-# genai.configure(api_key=GEMINI_API_KEY)
 
-# @api_view(["POST"])
-# def place_ai_response(request):
-#     query = request.data.get("textQuery", None)
-#     if not query:
-#         return Response({"error": "textQuery is required"}, status=400)
 
-#     url = "https://places.googleapis.com/v1/places:searchText"
-#     headers = {
-#         "Content-Type": "application/json",
-#         "X-Goog-Api-Key": PLACES_API_KEY,
-#         "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.priceLevel"
-#     }
-#     data = {"textQuery": query}
-
-#     response = requests.post(url, headers=headers, json=data)
-
-#     # Return API response
-#     return Response(response.json(), status=response.status_code)
-
-# @api_view(["GET"])
-# def get_google_access_token(request):
-#     data = {
-#         "code": auth_code,
-#         "client_id": "854610349372-a4bt1op18sh2mer9vbf069acpgsi74qr.apps.googleusercontent.com",
-#         "client_secret": "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",
-#         "redirect_uri": "http://localhost",
-#         "grant_type": "authorization_code"
-#     }
-#     response = requests.post("https://oauth2.googleapis.com/token", data=data)
-#     return response.json() 
-
-# @api_view(["POST"])
-# def place_ai_response(request):
-#     URL = 'https://places.googleapis.com/v1/places:searchText'
-    
-#     # Request payload
-#     payload = {
-#         "textQuery": "Spicy Vegetarian Food in Sydney, Australia"
-#     }
-    
-#     # Headers
-#     headers = {
-#         'Content-Type': 'application/json',
-#         'X-Goog-Api-Key': PLACES_API_KEY,
-#         'X-Goog-FieldMask': 'places.displayName,places.formattedAddress'
-#     }
-    
-#     try:
-#         # Make the POST request to Google Places API
-#         response = requests.post(URL, json=payload, headers=headers)
-        
-#         # Check if the request was successful
-#         if response.status_code == 200:
-#             data = response.json()
-#             # Return the places data or an empty list if no places are found
-#             places = data.get('places', [])
-#             return JsonResponse({'status': 'success', 'places': places}, status=200)
-#         else:
-#             # Handle API errors
-#             error_message = response.json().get('error', 'Failed to fetch data from Google Places API')
-#             return JsonResponse({'status': 'error', 'message': error_message}, status=response.status_code)
-            
-#     except requests.exceptions.RequestException as e:
-#         # Handle network or request errors
-#         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-#     # query = request.data.get("textQuery")
-#     # token = request.data.get("access_token")  # client must send this
-
-#     # if not query:
-#     #     return JsonResponse({"error": "textQuery is required"}, status=400)
-#     # if not token:
-#     #     return JsonResponse({"error": "access_token is required"}, status=400)
-
-#     # url = "https://places.googleapis.com/v1/places:searchText"
-#     # headers = {
-#     #     "Authorization": f"Bearer {token}",
-#     #     "Content-Type": "application/json",
-#     #     "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.priceLevel"
-#     # }
-#     # data = {"textQuery": query}
-
-#     # response = requests.post(url, headers=headers, json=data)
-#     # return JsonResponse(response.json(), status=response.status_code)
 
 
 @api_view(['POST'])
