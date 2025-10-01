@@ -174,12 +174,12 @@ def get_itinerary(request):
 
 
 @api_view(["GET"])
-def generate_ai_detailed_itinerary(request, pk):
+def generate_ai_detailed_itinerary(request, id):
     """
     Generate AI-powered detailed itinerary with real place details
     """
     try:
-        itinerary = Itinerary.objects.get(pk=pk)
+        itinerary = Itinerary.objects.get(pk=pk, user_id=id)
     except Itinerary.DoesNotExist:
         return Response(
             {"error": f"Itinerary with ID {pk} not found."}, 
