@@ -15,13 +15,20 @@ class Interest(models.Model):
     def __str__(self):
         return f"{self.name} -- {self.slug}"
 
+    
+
+# models.py (corrected UserPreference)
+
 class UserPreference(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='preferences')
     preferences = models.ManyToManyField(Interest, blank=True, related_name='preferred_by') 
 
     def __str__(self):
-        # prefs = ", ".join([p.name for p in self.preferences.all()])
-        return f"{self.user.username} -- {self.preferences.name}"
+        # This joins the names of all related Interest objects into a single string.
+        prefs = ", ".join([p.name for p in self.preferences.all()])
+        return f"{self.user.username}'s Interests: {prefs}"
+    
+
 
 
 class Itinerary(models.Model):

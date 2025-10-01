@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404
 from .serializers import EventListSerializer, EventDetailSerializer, EventCreateSerializer, InvitationSerializer, UserInviteListSerializer, NotificationSerializer
 from rest_framework.permissions import IsAuthenticated
 
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def event_list_create(request):
@@ -20,6 +21,7 @@ def event_list_create(request):
         serializer.is_valid(raise_exception=True)
         serializer.save(event_user=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 # --- View for "My Events" Tab ---
 @api_view(['GET'])
