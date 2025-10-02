@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.utils.text import slugify
+from datetime import date
 
 class Interest(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -31,6 +32,9 @@ class UserPreference(models.Model):
         # prefs = ", ".join([p.name for p in self.preferences.all()])
         return f"{self.user.username}'s Interests: {self.preferences.name}"
 
+
+
+
 class Itinerary(models.Model):
     TRIP_TYPES = [('SOLO', 'Solo'), ('COUPLE', 'Couple'), ('FAMILY', 'Family'), ('GROUP', 'Group')]
     BUDGETS = [('50-100', '$50/100 day'), ('100-200', '$100/200 day'), ('200-300', '$200/300 day'), ('300-500+', '$300/500+ day')]
@@ -55,12 +59,29 @@ class Itinerary(models.Model):
     def __str__(self):
         return f"{self.user.username} -- {self.destination_name}" 
     
+    def get_trip_type_display(self):
+        return dict(self.TRIP_TYPES).get(self.trip_type, 'Unknown')
+
+
+    def get_budget_display(self):
+        return dict(self.BUDGETS).get(self.budget, 'Unknown')
+
+    def get_duration_left_display(self):
+        if self.duration is None or self.end_date is None:
+            return 'Unknown'
+        today = date.today()
+        days_left = (self.end_date - today).days
+        if days_left < 0:
+            return "Trip ended"
+        return f"{days_left} days left"
+
+
 class Day(models.Model):
     itinerary = models.ForeignKey(Itinerary, on_delete=models.CASCADE, related_name="days")
     day_number = models.PositiveIntegerField()  # Day 1, Day 2, Day 3, ...
 
     def __str__(self):
-        return f"{self.day_number} of {self.itinerary.destination}"
+        return f"{self.day_number} of {self.itinerary.destination_name}"
 
 
 class TouristSpot(models.Model):

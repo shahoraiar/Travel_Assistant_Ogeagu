@@ -10,6 +10,9 @@ from django.http import JsonResponse
 import json
 from django.utils.timezone import now
 
+import logging
+logger = logging.getLogger(__name__)
+
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -330,22 +333,22 @@ def generate_ai_detailed_itinerary(request, id):
     Generate AI-powered detailed itinerary with real place details
     """
     try:
-        itinerary = Itinerary.objects.get(pk=pk, user_id=id)
+        itinerary = Itinerary.objects.get(user_id=id)
     except Itinerary.DoesNotExist:
         return Response(
-            {"error": f"Itinerary with ID {pk} not found."}, 
+            {"error": f"Itinerary with ID {id} not found."}, 
             status=status.HTTP_404_NOT_FOUND
         )
 
     # Validate and parse destination coordinates
     try:
-        if not itinerary.destination or ',' not in itinerary.destination:
+        if not itinerary.latitude and itinerary.longitude:
             return Response(
                 {"error": "Invalid destination format. Expected 'latitude, longitude'."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-            
-        lat_str, lng_str = itinerary.destination.split(',')
+
+        lat_str, lng_str = itinerary.latitude, itinerary.longitude
         dest_lat, dest_lng = float(lat_str.strip()), float(lng_str.strip())
         
         # Validate coordinate ranges
@@ -370,18 +373,21 @@ def generate_ai_detailed_itinerary(request, id):
         )
 
     try:
-        # Get destination name from coordinates
-        destination_name = utils.get_location_name_from_coords(dest_lat, dest_lng)
-        if not destination_name or destination_name == "Unknown Location":
-            return Response(
-                {"error": "Could not determine destination name from coordinates."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+        # Get destination name from coordinates        
+        destination_name = itinerary.destination_name
+        
+        if not destination_name:
+            destination_name = utils.get_location_name_from_coords(dest_lat, dest_lng)
+            if not destination_name or destination_name == "Unknown Location":
+                return Response(
+                    {"error": "Destination name is missing in the itinerary."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
         # Generate AI plan
         ai_plan = ai.generate_ai_plan(
             duration=duration,
-            destination_name=destination_name,
+            destination_name= destination_name,
             trip_type=itinerary.get_trip_type_display(),
             budget=itinerary.get_budget_display()
         )
