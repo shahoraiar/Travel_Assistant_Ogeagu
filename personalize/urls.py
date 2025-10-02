@@ -10,13 +10,18 @@ urlpatterns = [
     path('itineraries/create/', create_itinerary, name='create-itinerary'),
     path('itineraries/', get_itinerary, name='get-itinerary'), 
 
-    path('days/<int:day_id>/add-spot/', add_tourist_spot, name='add-tourist-spot'),
-    path('recommendations/', get_recommendations, name='get-recommendations'),
+    # path('days/<int:day_id>/add-spot/', add_tourist_spot, name='add-tourist-spot'),
+    # path('recommendations/', get_recommendations, name='get-recommendations'),
 
     # AI-powered itinerary generation for travel plans
     path('ai/itinerary/<int:id>/', generate_ai_detailed_itinerary, name='generate-ai-itinerary'),
 
     path('suggest/restaurant/', nearest_restaurant, name="nearest_restaurant"),
+    path('suggest/hotel/', nearest_hotel, name="nearest_hotel"),
+    path('suggest/art/', nearest_art_places, name="nearest_art_places"),
+
+    path('nearby-retuarant/', nearby_restaurants, name="nearby_restaurants"),
+    path('restaurant-details/<str:place_id>/', restaurant_details, name="restaurant_details")
 
 
     # path('itineraries/<int:itinerary_id>/complete/', complete_itinerary, name='complete-itinerary'),

@@ -70,3 +70,18 @@ class TouristSpot(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.location}) on {self.day}"
+
+class Place(models.Model):
+    name = models.CharField(max_length=255, blank=True, null=True)
+    place_id = models.CharField(unique=True, max_length=255)
+    latitude = models.CharField(max_length=100, blank=True, null=True)
+    longitude = models.CharField(max_length=100, blank=True, null=True) 
+    rating = models.DecimalField(max_digits=10, decimal_places=2)
+    image = models.TextField()
+    type = models.CharField(max_length=50, blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+

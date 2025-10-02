@@ -232,6 +232,7 @@ def nearest_restaurant(request):
             distance_km = haversine(lat, lng, place_lat, place_lng)
 
             restaurant_info = {
+                "place_id": place_id,
                 "name": place.get("name"),
                 "location_name": place.get("vicinity"),
                 "coordinates": {"latitude": place_lat, "longitude": place_lng},
@@ -301,6 +302,324 @@ def nearest_restaurant(request):
 
     except requests.RequestException as e:
         return Response({"error": str(e)}, status=500)
+
+
+@api_view(["POST"])
+def nearby_restaurants(request):
+    lat = request.data.get("latitude")
+    lng = request.data.get("longitude")
+    radius = int(request.data.get("radius", 5000))  # default 5 km
+
+    if not lat or not lng:
+        return Response({"error": "Please provide latitude and longitude"}, status=400)
+
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except ValueError:
+        return Response({"error": "Latitude and longitude must be numeric"}, status=400)
+
+    # Nearby search (only summary fields)
+    search_params = {
+        "location": f"{lat},{lng}",
+        "radius": radius,
+        "type": "restaurant",
+        "key": API_KEY
+    }
+
+    try:
+        search_resp = requests.get(SEARCH_URL, params=search_params)
+        search_data = search_resp.json()
+
+        if search_data.get("status") != "OK":
+            return Response({"error": search_data.get("status")}, status=400)
+
+        results = []
+        for place in search_data.get("results", []):
+            place_id = place.get("place_id")
+            place_lat = place["geometry"]["location"]["lat"]
+            place_lng = place["geometry"]["location"]["lng"]
+
+            results.append({
+                "place_id": place_id,
+                "name": place.get("name"),
+                "latitude": place_lat,
+                "longitude": place_lng,
+                "total_rating": place.get("rating", 0.0),
+                "total_reviews": place.get("user_ratings_total", 0),
+                "thumbnail": place.get("photos", [{}])[0].get("photo_reference") if place.get("photos") else None
+            })
+
+        return Response(results, status=200)
+
+    except requests.RequestException as e:
+        return Response({"error": str(e)}, status=500)
+    
+@api_view(["GET"])
+def restaurant_details(request, place_id):
+    details_params = {
+        "place_id": place_id,
+        "fields": "name,formatted_address,geometry,formatted_phone_number,website,"
+                  "opening_hours,editorial_summary,reviews,photos,rating,user_ratings_total",
+        "key": API_KEY
+    }
+    try:
+        details_resp = requests.get(DETAILS_URL, params=details_params)
+        details_data = details_resp.json()
+
+        if details_data.get("status") != "OK":
+            return Response({"error": details_data.get("status")}, status=400)
+
+        result = details_data.get("result", {})
+
+        place_info = {
+            "place_id": place_id,
+            "name": result.get("name"),
+            "address": result.get("formatted_address"),
+            "coordinates": result.get("geometry", {}).get("location"),
+            "phone": result.get("formatted_phone_number"),
+            "website": result.get("website"),
+            "opening_hours": result.get("opening_hours", {}).get("weekday_text", []),
+            "description": result.get("editorial_summary", {}).get("overview", ""),
+            "total_reviews": result.get("user_ratings_total", 0),
+            "total_rating": result.get("rating", 0.0),
+            "photos": [
+                f"{PHOTO_BASE_URL}?maxwidth=800&photoreference={p['photo_reference']}&key={API_KEY}"
+                for p in result.get("photos", [])
+            ],
+            "reviews": [
+                {
+                    "author": r.get("author_name"),
+                    "rating": r.get("rating"),
+                    "text": r.get("text"),
+                    "time": r.get("relative_time_description")
+                }
+                for r in result.get("reviews", [])
+            ]
+        }
+
+        return Response(place_info, status=200)
+
+    except requests.RequestException as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(["POST"])
+def nearest_hotel(request):
+    lat = request.data.get("latitude")
+    lng = request.data.get("longitude")
+    radius = int(request.data.get("radius", 5000))  # default 5 km
+
+    if not lat or not lng:
+        return Response({"error": "Please provide latitude and longitude"}, status=400)
+
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except ValueError:
+        return Response({"error": "Latitude and longitude must be numeric"}, status=400)
+
+    search_params = {
+        "location": f"{lat},{lng}",
+        "radius": radius,
+        "type": "lodging",  # <-- hotel/lodging type
+        "key": API_KEY
+    }
+
+    try:
+        search_resp = requests.get(SEARCH_URL, params=search_params)
+        search_data = search_resp.json()
+
+        if search_data.get("status") != "OK":
+            return Response({"error": search_data.get("status")}, status=400)
+
+        hotels = []
+
+        for place in search_data.get("results", []):
+            print('____________________place_________________________________')
+            print(place)
+
+            place_id = place.get("place_id")
+            place_lat = place["geometry"]["location"]["lat"]
+            place_lng = place["geometry"]["location"]["lng"]
+            distance_km = haversine(lat, lng, place_lat, place_lng)
+
+            hotel_info = {
+                "place_id": place_id,
+                "name": place.get("name"),
+                "location_name": place.get("vicinity"),
+                "coordinates": {"latitude": place_lat, "longitude": place_lng},
+                "distance_km": round(distance_km, 2),
+                "opening_hours": [],
+                "phone": None,
+                "website": None,
+                "description": None,
+                "total_reviews": 0,
+                "total_rating": 0.0,
+                "photos": [],
+                "reviews_summary": {},
+                "reviews": [],
+                "map_link": f"https://www.google.com/maps/search/?api=1&query={place_lat},{place_lng}",
+                "map_link2": f"https://www.google.com/maps/search/?api=1&query=Google&query_place_id={place_id}"
+            }
+
+            if place_id:
+                details_params = {
+                    "place_id": place_id,
+                    "fields": "name,formatted_address,formatted_phone_number,website,opening_hours,editorial_summary,reviews,photos,rating,user_ratings_total",
+                    "key": API_KEY
+                }
+                details_resp = requests.get(DETAILS_URL, params=details_params)
+                details_data = details_resp.json()
+
+                if details_data.get("status") == "OK":
+                    result = details_data.get("result", {})
+
+                    hotel_info["description"] = result.get("editorial_summary", {}).get("overview", "")
+                    hotel_info["phone"] = result.get("formatted_phone_number")
+                    hotel_info["website"] = result.get("website")
+                    hotel_info["opening_hours"] = result.get("opening_hours", {}).get("weekday_text", [])
+                    hotel_info["total_reviews"] = result.get("user_ratings_total", 0)
+                    hotel_info["total_rating"] = result.get("rating", 0.0)
+
+                    # Photos
+                    photos = result.get("photos", [])
+                    for photo in photos[:10]:
+                        ref = photo.get("photo_reference")
+                        if ref:
+                            hotel_info["photos"].append(f"{PHOTO_BASE_URL}?maxwidth=800&photoreference={ref}&key={API_KEY}")
+
+                    # Reviews & rating breakdown
+                    reviews = result.get("reviews", [])
+                    star_count = {str(i): 0 for i in range(1, 6)}
+                    for review in reviews:
+                        rating = review.get("rating")
+                        if rating:
+                            star_count[str(int(rating))] += 1
+                            hotel_info["reviews"].append({
+                                "author": review.get("author_name"),
+                                "rating": rating,
+                                "text": review.get("text"),
+                                "time": review.get("relative_time_description")
+                            })
+                    hotel_info["reviews_summary"] = star_count
+
+            hotels.append(hotel_info)
+        
+        hotels.sort(key=lambda x: x["distance_km"])
+
+        return Response(hotels, status=200)
+
+    except requests.RequestException as e:
+        return Response({"error": str(e)}, status=500)
+
+@api_view(["POST"])
+def nearest_art_places(request):
+    lat = request.data.get("latitude")
+    lng = request.data.get("longitude")
+    radius = int(request.data.get("radius", 5000))  # default 5 km
+
+    if not lat or not lng:
+        return Response({"error": "Please provide latitude and longitude"}, status=400)
+
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except ValueError:
+        return Response({"error": "Latitude and longitude must be numeric"}, status=400)
+
+    search_params = {
+        "location": f"{lat},{lng}",
+        "radius": radius,
+        "type": "art_gallery",   # 🎯 or use "museum"
+        "key": API_KEY
+    }
+
+    try:
+        search_resp = requests.get(SEARCH_URL, params=search_params)
+        search_data = search_resp.json()
+
+        if search_data.get("status") != "OK":
+            return Response({"error": search_data.get("status")}, status=400)
+
+        art_places = []
+
+        for place in search_data.get("results", []):
+            place_id = place.get("place_id")
+            place_lat = place["geometry"]["location"]["lat"]
+            place_lng = place["geometry"]["location"]["lng"]
+            distance_km = haversine(lat, lng, place_lat, place_lng)
+
+            art_info = {
+                "place_id": place_id,
+                "name": place.get("name"),
+                "location_name": place.get("vicinity"),
+                "coordinates": {"latitude": place_lat, "longitude": place_lng},
+                "distance_km": round(distance_km, 2),
+                "opening_hours": [],
+                "phone": None,
+                "website": None,
+                "description": None,
+                "total_reviews": 0,
+                "total_rating": 0.0,
+                "photos": [],
+                "reviews_summary": {},
+                "reviews": [],
+                "map_link": f"https://www.google.com/maps/search/?api=1&query={place_lat},{place_lng}",
+                "map_link2": f"https://www.google.com/maps/search/?api=1&query={place.get('name','')}&query_place_id={place_id}"
+            }
+
+            if place_id:
+                details_params = {
+                    "place_id": place_id,
+                    "fields": "name,formatted_address,formatted_phone_number,website,opening_hours,editorial_summary,reviews,photos,rating,user_ratings_total",
+                    "key": API_KEY
+                }
+                details_resp = requests.get(DETAILS_URL, params=details_params)
+                details_data = details_resp.json()
+
+                if details_data.get("status") == "OK":
+                    result = details_data.get("result", {})
+
+                    art_info["description"] = result.get("editorial_summary", {}).get("overview", "")
+                    art_info["phone"] = result.get("formatted_phone_number")
+                    art_info["website"] = result.get("website")
+                    art_info["opening_hours"] = result.get("opening_hours", {}).get("weekday_text", [])
+                    art_info["total_reviews"] = result.get("user_ratings_total", 0)
+                    art_info["total_rating"] = result.get("rating", 0.0)
+
+                    # Photos
+                    photos = result.get("photos", [])
+                    for photo in photos[:10]:
+                        ref = photo.get("photo_reference")
+                        if ref:
+                            art_info["photos"].append(
+                                f"{PHOTO_BASE_URL}?maxwidth=800&photoreference={ref}&key={API_KEY}"
+                            )
+
+                    # Reviews
+                    reviews = result.get("reviews", [])
+                    star_count = {str(i): 0 for i in range(1, 6)}
+                    for review in reviews:
+                        rating = review.get("rating")
+                        if rating:
+                            star_count[str(int(rating))] += 1
+                            art_info["reviews"].append({
+                                "author": review.get("author_name"),
+                                "rating": rating,
+                                "text": review.get("text"),
+                                "time": review.get("relative_time_description")
+                            })
+                    art_info["reviews_summary"] = star_count
+
+            art_places.append(art_info)
+
+        art_places.sort(key=lambda x: x["distance_km"])
+        return Response(art_places, status=200)
+
+    except requests.RequestException as e:
+        return Response({"error": str(e)}, status=500)
+
 
 
 # @api_view(["POST"])
