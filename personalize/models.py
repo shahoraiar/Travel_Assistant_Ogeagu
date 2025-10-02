@@ -32,9 +32,6 @@ class UserPreference(models.Model):
         # prefs = ", ".join([p.name for p in self.preferences.all()])
         return f"{self.user.username}'s Interests: {self.preferences.name}"
 
-
-
-
 class Itinerary(models.Model):
     TRIP_TYPES = [('SOLO', 'Solo'), ('COUPLE', 'Couple'), ('FAMILY', 'Family'), ('GROUP', 'Group')]
     BUDGETS = [('50-100', '$50/100 day'), ('100-200', '$100/200 day'), ('200-300', '$200/300 day'), ('300-500+', '$300/500+ day')]
@@ -62,7 +59,6 @@ class Itinerary(models.Model):
     def get_trip_type_display(self):
         return dict(self.TRIP_TYPES).get(self.trip_type, 'Unknown')
 
-
     def get_budget_display(self):
         return dict(self.BUDGETS).get(self.budget, 'Unknown')
 
@@ -75,22 +71,29 @@ class Itinerary(models.Model):
             return "Trip ended"
         return f"{days_left} days left"
 
-
 class Day(models.Model):
     itinerary = models.ForeignKey(Itinerary, on_delete=models.CASCADE, related_name="days")
-    day_number = models.PositiveIntegerField()  # Day 1, Day 2, Day 3, ...
-
+    day_number = models.PositiveIntegerField()  
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True) 
+    
     def __str__(self):
         return f"{self.day_number} of {self.itinerary.destination_name}"
 
-
-class TouristSpot(models.Model):
-    day = models.ForeignKey(Day, on_delete=models.CASCADE, related_name="spots")
-    name = models.CharField(max_length=255)
-    location = models.CharField(max_length=255)
+class DaySpot(models.Model):
+    day = models.ForeignKey(Day, on_delete=models.CASCADE, related_name="places")
+    place_id = models.CharField(max_length=255, blank=True, null=True)
+    place_name = models.CharField(max_length=255, blank=True, null=True)
+    place_location = models.CharField(max_length=255, blank=True, null=True)
+    place_image = models.URLField(blank=True, null=True)
+    place_type = models.CharField(max_length=255, blank=True, null=True)
+    place_rating = models.CharField(max_length=50, blank=True, null=True)
+    place_description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True) 
 
     def __str__(self):
-        return f"{self.name} ({self.location}) on {self.day}"
+        return f"{self.place_name} (Day {self.day.day_number})"
 
 class Place(models.Model):
     name = models.CharField(max_length=255, blank=True, null=True)

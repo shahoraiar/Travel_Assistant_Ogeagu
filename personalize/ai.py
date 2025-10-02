@@ -37,7 +37,8 @@ def generate_ai_plan(
         return {"itinerary_plan": []}
 
     # 1. MODEL UPGRADE: Use the faster, cheaper, and more modern Flash model.
-    model = genai.GenerativeModel("gemini-1.5-flash-latest")
+    # model = genai.GenerativeModel("gemini-pro")
+    model = genai.GenerativeModel("gemini-2.5-flash") 
     
     # 2. CURRENT DATE: The current date is passed for temporal context.
     current_date_str = datetime.now().strftime('%B %d, %Y')

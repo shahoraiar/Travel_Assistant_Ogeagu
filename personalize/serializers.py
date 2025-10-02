@@ -44,12 +44,12 @@ class ItineraryCreateSerializer(serializers.ModelSerializer):
     
 class TouristSpotSerializer(serializers.ModelSerializer):
     class Meta:
-        model = TouristSpot
+        model = DaySpot
         fields = ['id', 'day', 'name', 'location']
         
 class TouristSpotReadSerializer(serializers.ModelSerializer):
     class Meta:
-        model = TouristSpot
+        model = DaySpot
         fields = ['id', 'name', 'location']
 
 

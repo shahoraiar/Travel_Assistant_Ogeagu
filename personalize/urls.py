@@ -9,12 +9,15 @@ urlpatterns = [
     path('preferences/delete/', delete_preference, name='delete-preference'),
     path('itineraries/create/', create_itinerary, name='create-itinerary'),
     path('itineraries/', get_itinerary, name='get-itinerary'), 
+    path('active-itinerary/', home_active_itinerary, name='home_active_itinerary'),
 
     # path('days/<int:day_id>/add-spot/', add_tourist_spot, name='add-tourist-spot'),
     # path('recommendations/', get_recommendations, name='get-recommendations'),
 
     # AI-powered itinerary generation for travel plans
-    path('ai/itinerary/<int:id>/', generate_ai_detailed_itinerary, name='generate-ai-itinerary'),
+    path('preferences/generate_day/', generate_day, name='generate_day'),
+
+    path('home/all_day_plans/', all_day_plan, name="all_day_plan"),
 
     path('suggest/restaurant/', nearest_restaurant, name="nearest_restaurant"),
     path('suggest/hotel/', nearest_hotel, name="nearest_hotel"),

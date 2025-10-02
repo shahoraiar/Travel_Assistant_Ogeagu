@@ -20,6 +20,7 @@ from rest_framework import status
 import requests
 import math
 from django.conf import settings
+from django.db import transaction
 
 SEARCH_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
@@ -173,6 +174,46 @@ def create_itinerary(request):
 
     return Response(ItineraryCreateSerializer(itinerary).data, status=status.HTTP_201_CREATED)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_day(request):
+    itinerary_id = request.data.get('itinerary_id')
+    if not itinerary_id:
+        return Response(
+            {'itinerary_id': 'The field is required'},
+            status=400
+        )
+
+    try:
+        details = generate_ai_detailed_itinerary(itinerary_id)
+
+        with transaction.atomic():  
+            for day_data in details['itinerary_plan']:
+                day_obj, created = Day.objects.get_or_create(
+                    itinerary_id=itinerary_id,
+                    day_number=day_data['day']
+                )
+
+                for activity in day_data['activities']:
+                    DaySpot.objects.create(
+                        day=day_obj,
+                        place_id=activity.get('place_id'),
+                        place_name=activity.get('title'),
+                        place_location=activity.get('location'),
+                        place_image=activity.get('photo') or '',  
+                        place_type=','.join(activity.get('types', [])),
+                        place_rating=str(activity.get('rating', '')),
+                        place_description=activity.get('description') or activity.get('original_activity', '')
+                    )
+
+    except Exception as e:
+        print('Error saving AI-generated itinerary:', e)
+        return Response(
+            {'error': str(e)},
+            status=500
+        )
+
+    return Response({'details': details}, status=200)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -188,6 +229,95 @@ def get_itinerary(request):
 
     serializer = ItineraryReadSerializer(itinerary, many=True) 
     return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def home_active_itinerary(request):
+    user = request.user
+    print('user : ', user.id)
+    print('now time : ', date.today())
+    try:
+        active_itinerary = Itinerary.objects.get(
+            user=user, 
+            start_date__lte=date.today(), 
+            end_date__gte=date.today()
+        )
+    except Itinerary.DoesNotExist:
+        return Response({"message": "No active itinerary found"}, status=404)
+    
+    print('active_itinerary : ', active_itinerary)
+    serializer = ItineraryReadSerializer(active_itinerary) 
+
+    return Response(serializer.data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def all_day_plan(request):
+    user = request.user
+
+    itinerary_id = request.data.get('itinerary_id')
+    if not itinerary_id:
+        return Response(
+            {'itinerary_id': 'The field is required'},
+            status=400
+        )
+    
+    try:
+        itinerary = Itinerary.objects.get(id=itinerary_id, user=user)
+    except Itinerary.DoesNotExist:
+        return Response({'error': 'Itinerary not found'}, status=404)
+
+    all_days = []
+
+    
+
+    days = itinerary.days.all().order_by('day_number')
+    for day in days:
+        day_data = {
+            'day_number': day.day_number,
+            'places': []
+        }
+
+        spots = day.places.all()  # DaySpot instances
+        for spot in spots:
+            image = get_place_image(spot.place_id)
+            day_data['places'].append({
+                'place_id': spot.place_id,
+                'place_name': spot.place_name,
+                'place_location': spot.place_location,
+                'place_image': spot.place_image,
+                'place_type': spot.place_type,
+                'place_rating': spot.place_rating,
+                'place_description': spot.place_description,
+                'image': image
+            })
+
+        all_days.append(day_data)
+
+    return Response({'itinerary_id': itinerary_id, 'days': all_days}, status=200)
+
+def get_place_image(place_id):
+    """
+    Return a single image URL for a place_id using Google Places API
+    """
+    # Get Place Details
+    url = f"https://maps.googleapis.com/maps/api/place/details/json"
+    params = {
+        "place_id": place_id,
+        "fields": "photo",
+        "key": API_KEY
+    }
+    resp = requests.get(url, params=params).json()
+
+    photos = resp.get('result', {}).get('photos')
+    if photos and len(photos) > 0:
+        photo_ref = photos[0]['photo_reference']
+        # Construct photo URL
+        photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={photo_ref}&key={API_KEY}"
+        return photo_url
+
+    # fallback if no photo found
+    return None
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371
@@ -646,50 +776,33 @@ def nearest_art_places(request):
 
 #     return Response({"query_url": query_url})
 
-@api_view(["GET"])
-def generate_ai_detailed_itinerary(request, id):
+
+def generate_ai_detailed_itinerary(id):
     """
     Generate AI-powered detailed itinerary with real place details
     """
     try:
-        itinerary = Itinerary.objects.get(user_id=id)
+        itinerary = Itinerary.objects.get(id=id)
     except Itinerary.DoesNotExist:
-        return Response(
-            {"error": f"Itinerary with ID {id} not found."}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return {"error": f"Itinerary with ID {id} not found."}
 
     # Validate and parse destination coordinates
     try:
         if not itinerary.latitude and itinerary.longitude:
-            return Response(
-                {"error": "Invalid destination format. Expected 'latitude, longitude'."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return {"error": "Invalid destination format. Expected 'latitude, longitude'."}
 
         lat_str, lng_str = itinerary.latitude, itinerary.longitude
         dest_lat, dest_lng = float(lat_str.strip()), float(lng_str.strip())
         
         # Validate coordinate ranges
         if not (-90 <= dest_lat <= 90) or not (-180 <= dest_lng <= 180):
-            return Response(
-                {"error": "Invalid coordinate values."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return {"error": "Invalid coordinate values."}
             
     except (ValueError, AttributeError, TypeError):
-        return Response(
-            {"error": "Invalid destination format. Expected 'latitude, longitude'."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return {"error": "Invalid destination format. Expected 'latitude, longitude'."}
         
     # Determine trip duration with better validation
-    duration = calculate_trip_duration(itinerary)
-    if duration <= 0:
-        return Response(
-            {"error": "Could not determine a valid trip duration. Please provide either start/end dates or duration."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    duration = itinerary.duration
 
     try:
         # Get destination name from coordinates        
@@ -698,10 +811,7 @@ def generate_ai_detailed_itinerary(request, id):
         if not destination_name:
             destination_name = utils.get_location_name_from_coords(dest_lat, dest_lng)
             if not destination_name or destination_name == "Unknown Location":
-                return Response(
-                    {"error": "Destination name is missing in the itinerary."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return {"error": "Destination name is missing in the itinerary."}
             
         # Generate AI plan
         ai_plan = ai.generate_ai_plan(
@@ -713,10 +823,7 @@ def generate_ai_detailed_itinerary(request, id):
 
         # Validate AI response structure
         if not ai_plan or not isinstance(ai_plan.get("itinerary_plan"), list):
-            return Response(
-                {"error": "AI service returned invalid itinerary structure."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return {"error": "AI service returned invalid itinerary structure."}
 
         # Enrich with real place details
         final_itinerary = enrich_itinerary_with_places(
@@ -726,37 +833,30 @@ def generate_ai_detailed_itinerary(request, id):
             destination_name
         )
 
-        return Response(
-            {
+        return {
                 "itinerary_plan": final_itinerary,
                 "destination_name": destination_name,
                 "duration": duration,
                 "trip_type": itinerary.get_trip_type_display(),
                 "budget": itinerary.get_budget_display()
-            }, 
-            status=status.HTTP_200_OK
-        )
+            }
+        
 
     except requests.exceptions.RequestException as e:
         logger.error(f"External API error: {str(e)}")
-        return Response(
-            {"error": "Service temporarily unavailable. Please try again later."},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
+        return {"error": "Service temporarily unavailable. Please try again later."}
+    
     except Exception as e:
         logger.error(f"Unexpected error in itinerary generation: {str(e)}")
-        return Response(
-            {"error": "An unexpected error occurred while generating your itinerary."},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return {"error": "An unexpected error occurred while generating your itinerary."}
 
 
-def calculate_trip_duration(itinerary):
-    """Calculate trip duration from dates or duration field"""
-    if itinerary.start_date and itinerary.end_date:
-        duration = (itinerary.end_date - itinerary.start_date).days + 1
-        if duration > 0:
-            return duration
+# def calculate_trip_duration(itinerary):
+#     """Calculate trip duration from dates or duration field"""
+#     if itinerary.start_date and itinerary.end_date:
+#         duration = (itinerary.end_date - itinerary.start_date).days + 1
+#         if duration > 0:
+#             return duration
     
     # Fallback to duration field
     duration_map = {
@@ -816,7 +916,6 @@ def enrich_itinerary_with_places(ai_plan, dest_lat, dest_lng, destination_name):
         })
     
     return final_itinerary
-
 
 
 
