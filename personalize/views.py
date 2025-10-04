@@ -21,6 +21,7 @@ import requests
 import math
 from django.conf import settings
 from django.db import transaction
+from datetime import timedelta
 
 SEARCH_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
@@ -183,28 +184,46 @@ def generate_day(request):
             {'itinerary_id': 'The field is required'},
             status=400
         )
+    try:
+        itinerary = Itinerary.objects.get(user=request.user, id=itinerary_id)
+    except Itinerary.DoesNotExist:
+        return Response(
+            {'error': 'You do not have permission to access this itinerary or it does not exist.'},
+            status=400
+        )
 
     try:
         details = generate_ai_detailed_itinerary(itinerary_id)
+        current_date = itinerary.start_date
 
         with transaction.atomic():  
             for day_data in details['itinerary_plan']:
                 day_obj, created = Day.objects.get_or_create(
-                    itinerary_id=itinerary_id,
-                    day_number=day_data['day']
+                    itinerary=itinerary,
+                    day_number=day_data['day'],
+                    defaults={'visit_date': current_date}
                 )
 
                 for activity in day_data['activities']:
+                    place_id = activity.get('place_id')
+                    if not place_id:
+                        continue
+
+                    if not activity.get('photo') : 
+                        image = get_place_image(activity.get('place_id'))
+
                     DaySpot.objects.create(
                         day=day_obj,
-                        place_id=activity.get('place_id'),
+                        place_id=place_id,
                         place_name=activity.get('title'),
                         place_location=activity.get('location'),
-                        place_image=activity.get('photo') or '',  
+                        place_image=image if image else '',  
                         place_type=','.join(activity.get('types', [])),
                         place_rating=str(activity.get('rating', '')),
                         place_description=activity.get('description') or activity.get('original_activity', '')
                     )
+
+                current_date += timedelta(days=1)
 
     except Exception as e:
         print('Error saving AI-generated itinerary:', e)
@@ -213,7 +232,11 @@ def generate_day(request):
             status=500
         )
 
-    return Response({'details': details}, status=200)
+    return Response({
+        'status': 'success',
+        'message': 'Personalized itinerary successfully generated using AI.', 
+        'details': details
+        }, status=200)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -265,22 +288,21 @@ def all_day_plan(request):
     try:
         itinerary = Itinerary.objects.get(id=itinerary_id, user=user)
     except Itinerary.DoesNotExist:
-        return Response({'error': 'Itinerary not found'}, status=404)
+        return Response({'error': 'You do not have permission to access this itinerary or it does not exist.'}, status=404)
 
     all_days = []
-
-    
 
     days = itinerary.days.all().order_by('day_number')
     for day in days:
         day_data = {
             'day_number': day.day_number,
+            'date': day.visit_date,
             'places': []
         }
 
         spots = day.places.all()  # DaySpot instances
         for spot in spots:
-            image = get_place_image(spot.place_id)
+            # image = get_place_image(spot.place_id)
             day_data['places'].append({
                 'place_id': spot.place_id,
                 'place_name': spot.place_name,
@@ -289,18 +311,57 @@ def all_day_plan(request):
                 'place_type': spot.place_type,
                 'place_rating': spot.place_rating,
                 'place_description': spot.place_description,
-                'image': image
             })
 
         all_days.append(day_data)
 
     return Response({'itinerary_id': itinerary_id, 'days': all_days}, status=200)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def show_current_date_plan(request):
+    user = request.user
+
+    itinerary_id = request.data.get('itinerary_id')
+    if not itinerary_id:
+        return Response(
+            {'itinerary_id': 'The field is required'},
+            status=400
+        )
+    
+    try:
+        itinerary = Itinerary.objects.get(id=itinerary_id, user=user)
+    except Itinerary.DoesNotExist:
+        return Response({'error': 'You do not have permission to access this itinerary or it does not exist.'}, status=404)
+
+    all_days = []
+
+    days = itinerary.days.get(visit_date=date.today())
+    # for day in days:
+    day_data = {
+        'day_number': days.day_number,
+        'date': days.visit_date,
+        'places': []
+        }
+
+    spots = days.places.all()  # DaySpot instances
+    for spot in spots:
+        # image = get_place_image(spot.place_id)
+        day_data['places'].append({
+            'place_id': spot.place_id,
+            'place_name': spot.place_name,
+            'place_location': spot.place_location,
+            'place_image': spot.place_image,
+            'place_type': spot.place_type,
+            'place_rating': spot.place_rating,
+            'place_description': spot.place_description,
+        })
+
+    all_days.append(day_data)
+
+    return Response({'itinerary_id': itinerary_id, 'days': all_days}, status=200)
+
 def get_place_image(place_id):
-    """
-    Return a single image URL for a place_id using Google Places API
-    """
-    # Get Place Details
     url = f"https://maps.googleapis.com/maps/api/place/details/json"
     params = {
         "place_id": place_id,
@@ -310,9 +371,9 @@ def get_place_image(place_id):
     resp = requests.get(url, params=params).json()
 
     photos = resp.get('result', {}).get('photos')
+    print('---------------------', place_id, '|| photos - ', photos)
     if photos and len(photos) > 0:
         photo_ref = photos[0]['photo_reference']
-        # Construct photo URL
         photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={photo_ref}&key={API_KEY}"
         return photo_url
 
@@ -437,14 +498,84 @@ def nearest_restaurant(request):
         return Response({"error": str(e)}, status=500)
 
 
+# @api_view(["POST"])
+# def nearby_place(request):
+#     lat = request.data.get("latitude")
+#     lng = request.data.get("longitude")
+#     type = request.data.get("place_type")
+#     radius = int(request.data.get("radius", 5000))  # default 5 km
+
+#     if not lat or not lng or not type:
+#         return Response({"error": "Please provide latitude and longitude and place_type"}, status=400)
+
+#     try:
+#         lat = float(lat)
+#         lng = float(lng)
+#     except ValueError:
+#         return Response({"error": "Latitude and longitude must be numeric"}, status=400)
+
+#     # Nearby search (only summary fields)
+#     search_params = {
+#         "location": f"{lat},{lng}",
+#         "radius": radius,
+#         "type": type,
+#         "key": API_KEY
+#     }
+
+#     try:
+#         search_resp = requests.get(SEARCH_URL, params=search_params)
+#         search_data = search_resp.json()
+
+#         if search_data.get("status") != "OK":
+#             return Response({"error": search_data.get("status")}, status=400)
+
+#         results = []
+#         for place in search_data.get("results", []):
+#             place_id = place.get("place_id")
+#             place_lat = place["geometry"]["location"]["lat"]
+#             place_lng = place["geometry"]["location"]["lng"]
+
+#             # Get main photo if available
+#             thumbnail_url = None
+#             if place.get("photos"):
+#                 photo_ref = place["photos"][0].get("photo_reference")
+#                 if photo_ref:
+#                     thumbnail_url = f"{PHOTO_BASE_URL}?maxwidth=800&photoreference={photo_ref}&key={API_KEY}"
+
+#             results.append({
+#                 "place_id": place_id,
+#                 "name": place.get("name"),
+#                 "latitude": place_lat,
+#                 "longitude": place_lng,
+#                 "total_rating": place.get("rating", 0.0),
+#                 "total_reviews": place.get("user_ratings_total", 0),
+#                 "distance": round(haversine(lat, lng, place_lat, place_lng), 2),
+#                 "thumbnail": thumbnail_url  
+#             })
+ 
+#         return Response(results, status=200)
+
+#     except requests.RequestException as e:
+#         return Response({"error": str(e)}, status=500)
+
+# DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+# DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+
 @api_view(["POST"])
-def nearby_restaurants(request):
+def search_near_place(request):
     lat = request.data.get("latitude")
     lng = request.data.get("longitude")
+    place_type = request.data.get("place_type")
     radius = int(request.data.get("radius", 5000))  # default 5 km
+    print('radius : ', radius)
+    all_day = request.data.get("all_day")  # Morning / Afternoon / Evening
+    search = request.data.get("search")
 
     if not lat or not lng:
-        return Response({"error": "Please provide latitude and longitude"}, status=400)
+        return Response({"error": "Please provide latitude, longitude"}, status=400)
+    
+    if not place_type:
+        return Response({"error": "Please provide place_type"}, status=400)
 
     try:
         lat = float(lat)
@@ -452,13 +583,16 @@ def nearby_restaurants(request):
     except ValueError:
         return Response({"error": "Latitude and longitude must be numeric"}, status=400)
 
-    # Nearby search (only summary fields)
+    # Nearby search
     search_params = {
         "location": f"{lat},{lng}",
         "radius": radius,
-        "type": "restaurant",
+        "type": place_type,
         "key": API_KEY
     }
+
+    if search:
+        search_params["keyword"] = search
 
     try:
         search_resp = requests.get(SEARCH_URL, params=search_params)
@@ -469,9 +603,64 @@ def nearby_restaurants(request):
 
         results = []
         for place in search_data.get("results", []):
+            # print('-------------------------place : ', place)
             place_id = place.get("place_id")
             place_lat = place["geometry"]["location"]["lat"]
             place_lng = place["geometry"]["location"]["lng"]
+
+            # ✅ Get main photo if available
+            thumbnail_url = None
+            if place.get("photos"):
+                photo_ref = place["photos"][0].get("photo_reference")
+                if photo_ref:
+                    thumbnail_url = f"{PHOTO_BASE_URL}?maxwidth=800&photoreference={photo_ref}&key={API_KEY}"
+
+            weekday_text = []
+            is_open_time = True  # default allow
+            if all_day:
+                is_open_time = False  # need to check before allowing
+
+                # ✅ Only fetch Place Details if all_day filter is used
+                details_params = {
+                    "place_id": place_id,
+                    "fields": "opening_hours",
+                    "key": API_KEY
+                }
+                details_resp = requests.get(DETAILS_URL, params=details_params)
+                details_data = details_resp.json()
+
+                periods = details_data.get("result", {}).get("opening_hours", {}).get("periods", [])
+                weekday_text = details_data.get("result", {}).get("opening_hours", {}).get("weekday_text", [])
+
+                time_ranges = {
+                    "Morning": (6, 12),
+                    "Afternoon": (12, 18),
+                    "Evening": (18, 23)
+                }
+
+                if all_day in time_ranges:
+                    start_h, end_h = time_ranges[all_day]
+
+                    # ✅ Case 1: 24 hours
+                    for text in weekday_text:
+                        if "Open 24 hours" in text:
+                            is_open_time = True
+                            break
+
+                    # ✅ Case 2: specific hours from `periods`
+                    if not is_open_time:
+                        for period in periods:
+                            open_time = period.get("open", {}).get("time")
+                            close_time = period.get("close", {}).get("time")
+                            if open_time and close_time:
+                                open_h = int(open_time[:2])
+                                close_h = int(close_time[:2])
+                                if (open_h <= start_h < close_h) or (open_h < end_h <= close_h):
+                                    is_open_time = True
+                                    break
+
+            if not is_open_time:
+                continue  # skip this place
 
             results.append({
                 "place_id": place_id,
@@ -480,16 +669,33 @@ def nearby_restaurants(request):
                 "longitude": place_lng,
                 "total_rating": place.get("rating", 0.0),
                 "total_reviews": place.get("user_ratings_total", 0),
-                "thumbnail": place.get("photos", [{}])[0].get("photo_reference") if place.get("photos") else None
+                "distance": round(haversine(lat, lng, place_lat, place_lng), 2),
+                "thumbnail": thumbnail_url,
+                "type": place.get("types"),
+                "opening_hours": weekday_text  # only filled if all_day filter used
             })
 
         return Response(results, status=200)
 
     except requests.RequestException as e:
         return Response({"error": str(e)}, status=500)
-    
-@api_view(["GET"])
-def restaurant_details(request, place_id):
+
+
+@api_view(["POST"])
+def place_details(request):
+    place_id = request.data.get('place_id')
+    user_latitude = request.data.get('latitude')
+    user_longitude = request.data.get('longitude')
+
+    if not place_id or not user_latitude or not user_longitude:
+        return Response({"error": "place_id, latitude, and longitude are required"}, status=400)
+
+    try:
+        user_latitude = float(user_latitude)
+        user_longitude = float(user_longitude)
+    except ValueError:
+        return Response({"error": "latitude and longitude must be numeric"}, status=400)
+
     details_params = {
         "place_id": place_id,
         "fields": "name,formatted_address,geometry,formatted_phone_number,website,"
@@ -504,22 +710,29 @@ def restaurant_details(request, place_id):
             return Response({"error": details_data.get("status")}, status=400)
 
         result = details_data.get("result", {})
+        print('----------------place details : ', result)
+
+        coords = result.get("geometry", {}).get("location", {})
+        place_lat = coords.get("lat")
+        place_lng = coords.get("lng")
 
         place_info = {
             "place_id": place_id,
             "name": result.get("name"),
+            "description": result.get("editorial_summary", {}).get("overview", ""),
+            # "wikipidia_details": get_place_details(result.get("name")),
             "address": result.get("formatted_address"),
-            "coordinates": result.get("geometry", {}).get("location"),
+            "coordinates": coords,
             "phone": result.get("formatted_phone_number"),
             "website": result.get("website"),
             "opening_hours": result.get("opening_hours", {}).get("weekday_text", []),
             "description": result.get("editorial_summary", {}).get("overview", ""),
-            "total_reviews": result.get("user_ratings_total", 0),
-            "total_rating": result.get("rating", 0.0),
             "photos": [
                 f"{PHOTO_BASE_URL}?maxwidth=800&photoreference={p['photo_reference']}&key={API_KEY}"
                 for p in result.get("photos", [])
             ],
+            "total_rating": result.get("rating", 0.0),
+            "total_reviews": result.get("user_ratings_total", 0),
             "reviews": [
                 {
                     "author": r.get("author_name"),
@@ -528,7 +741,10 @@ def restaurant_details(request, place_id):
                     "time": r.get("relative_time_description")
                 }
                 for r in result.get("reviews", [])
-            ]
+            ],
+            "maps_link": f"https://www.google.com/maps/dir/{user_latitude},{user_longitude}/{place_lat},{place_lng}/"
+
+
         }
 
         return Response(place_info, status=200)
@@ -536,245 +752,47 @@ def restaurant_details(request, place_id):
     except requests.RequestException as e:
         return Response({"error": str(e)}, status=500)
 
-
-@api_view(["POST"])
-def nearest_hotel(request):
-    lat = request.data.get("latitude")
-    lng = request.data.get("longitude")
-    radius = int(request.data.get("radius", 5000))  # default 5 km
-
-    if not lat or not lng:
-        return Response({"error": "Please provide latitude and longitude"}, status=400)
-
-    try:
-        lat = float(lat)
-        lng = float(lng)
-    except ValueError:
-        return Response({"error": "Latitude and longitude must be numeric"}, status=400)
-
-    search_params = {
-        "location": f"{lat},{lng}",
-        "radius": radius,
-        "type": "lodging",  # <-- hotel/lodging type
-        "key": API_KEY
-    }
-
-    try:
-        search_resp = requests.get(SEARCH_URL, params=search_params)
-        search_data = search_resp.json()
-
-        if search_data.get("status") != "OK":
-            return Response({"error": search_data.get("status")}, status=400)
-
-        hotels = []
-
-        for place in search_data.get("results", []):
-            print('____________________place_________________________________')
-            print(place)
-
-            place_id = place.get("place_id")
-            place_lat = place["geometry"]["location"]["lat"]
-            place_lng = place["geometry"]["location"]["lng"]
-            distance_km = haversine(lat, lng, place_lat, place_lng)
-
-            hotel_info = {
-                "place_id": place_id,
-                "name": place.get("name"),
-                "location_name": place.get("vicinity"),
-                "coordinates": {"latitude": place_lat, "longitude": place_lng},
-                "distance_km": round(distance_km, 2),
-                "opening_hours": [],
-                "phone": None,
-                "website": None,
-                "description": None,
-                "total_reviews": 0,
-                "total_rating": 0.0,
-                "photos": [],
-                "reviews_summary": {},
-                "reviews": [],
-                "map_link": f"https://www.google.com/maps/search/?api=1&query={place_lat},{place_lng}",
-                "map_link2": f"https://www.google.com/maps/search/?api=1&query=Google&query_place_id={place_id}"
-            }
-
-            if place_id:
-                details_params = {
-                    "place_id": place_id,
-                    "fields": "name,formatted_address,formatted_phone_number,website,opening_hours,editorial_summary,reviews,photos,rating,user_ratings_total",
-                    "key": API_KEY
-                }
-                details_resp = requests.get(DETAILS_URL, params=details_params)
-                details_data = details_resp.json()
-
-                if details_data.get("status") == "OK":
-                    result = details_data.get("result", {})
-
-                    hotel_info["description"] = result.get("editorial_summary", {}).get("overview", "")
-                    hotel_info["phone"] = result.get("formatted_phone_number")
-                    hotel_info["website"] = result.get("website")
-                    hotel_info["opening_hours"] = result.get("opening_hours", {}).get("weekday_text", [])
-                    hotel_info["total_reviews"] = result.get("user_ratings_total", 0)
-                    hotel_info["total_rating"] = result.get("rating", 0.0)
-
-                    # Photos
-                    photos = result.get("photos", [])
-                    for photo in photos[:10]:
-                        ref = photo.get("photo_reference")
-                        if ref:
-                            hotel_info["photos"].append(f"{PHOTO_BASE_URL}?maxwidth=800&photoreference={ref}&key={API_KEY}")
-
-                    # Reviews & rating breakdown
-                    reviews = result.get("reviews", [])
-                    star_count = {str(i): 0 for i in range(1, 6)}
-                    for review in reviews:
-                        rating = review.get("rating")
-                        if rating:
-                            star_count[str(int(rating))] += 1
-                            hotel_info["reviews"].append({
-                                "author": review.get("author_name"),
-                                "rating": rating,
-                                "text": review.get("text"),
-                                "time": review.get("relative_time_description")
-                            })
-                    hotel_info["reviews_summary"] = star_count
-
-            hotels.append(hotel_info)
-        
-        hotels.sort(key=lambda x: x["distance_km"])
-
-        return Response(hotels, status=200)
-
-    except requests.RequestException as e:
-        return Response({"error": str(e)}, status=500)
-
-@api_view(["POST"])
-def nearest_art_places(request):
-    lat = request.data.get("latitude")
-    lng = request.data.get("longitude")
-    radius = int(request.data.get("radius", 5000))  # default 5 km
-
-    if not lat or not lng:
-        return Response({"error": "Please provide latitude and longitude"}, status=400)
-
-    try:
-        lat = float(lat)
-        lng = float(lng)
-    except ValueError:
-        return Response({"error": "Latitude and longitude must be numeric"}, status=400)
-
-    search_params = {
-        "location": f"{lat},{lng}",
-        "radius": radius,
-        "type": "art_gallery",   # 🎯 or use "museum"
-        "key": API_KEY
-    }
-
-    try:
-        search_resp = requests.get(SEARCH_URL, params=search_params)
-        search_data = search_resp.json()
-
-        if search_data.get("status") != "OK":
-            return Response({"error": search_data.get("status")}, status=400)
-
-        art_places = []
-
-        for place in search_data.get("results", []):
-            place_id = place.get("place_id")
-            place_lat = place["geometry"]["location"]["lat"]
-            place_lng = place["geometry"]["location"]["lng"]
-            distance_km = haversine(lat, lng, place_lat, place_lng)
-
-            art_info = {
-                "place_id": place_id,
-                "name": place.get("name"),
-                "location_name": place.get("vicinity"),
-                "coordinates": {"latitude": place_lat, "longitude": place_lng},
-                "distance_km": round(distance_km, 2),
-                "opening_hours": [],
-                "phone": None,
-                "website": None,
-                "description": None,
-                "total_reviews": 0,
-                "total_rating": 0.0,
-                "photos": [],
-                "reviews_summary": {},
-                "reviews": [],
-                "map_link": f"https://www.google.com/maps/search/?api=1&query={place_lat},{place_lng}",
-                "map_link2": f"https://www.google.com/maps/search/?api=1&query={place.get('name','')}&query_place_id={place_id}"
-            }
-
-            if place_id:
-                details_params = {
-                    "place_id": place_id,
-                    "fields": "name,formatted_address,formatted_phone_number,website,opening_hours,editorial_summary,reviews,photos,rating,user_ratings_total",
-                    "key": API_KEY
-                }
-                details_resp = requests.get(DETAILS_URL, params=details_params)
-                details_data = details_resp.json()
-
-                if details_data.get("status") == "OK":
-                    result = details_data.get("result", {})
-
-                    art_info["description"] = result.get("editorial_summary", {}).get("overview", "")
-                    art_info["phone"] = result.get("formatted_phone_number")
-                    art_info["website"] = result.get("website")
-                    art_info["opening_hours"] = result.get("opening_hours", {}).get("weekday_text", [])
-                    art_info["total_reviews"] = result.get("user_ratings_total", 0)
-                    art_info["total_rating"] = result.get("rating", 0.0)
-
-                    # Photos
-                    photos = result.get("photos", [])
-                    for photo in photos[:10]:
-                        ref = photo.get("photo_reference")
-                        if ref:
-                            art_info["photos"].append(
-                                f"{PHOTO_BASE_URL}?maxwidth=800&photoreference={ref}&key={API_KEY}"
-                            )
-
-                    # Reviews
-                    reviews = result.get("reviews", [])
-                    star_count = {str(i): 0 for i in range(1, 6)}
-                    for review in reviews:
-                        rating = review.get("rating")
-                        if rating:
-                            star_count[str(int(rating))] += 1
-                            art_info["reviews"].append({
-                                "author": review.get("author_name"),
-                                "rating": rating,
-                                "text": review.get("text"),
-                                "time": review.get("relative_time_description")
-                            })
-                    art_info["reviews_summary"] = star_count
-
-            art_places.append(art_info)
-
-        art_places.sort(key=lambda x: x["distance_km"])
-        return Response(art_places, status=200)
-
-    except requests.RequestException as e:
-        return Response({"error": str(e)}, status=500)
-
-
-
-# @api_view(["POST"])
-# def nearest_restaurant(request):
-#     lat = request.data.get("latitude")
-#     lng = request.data.get("longitude")
-
-#     if not lat or not lng:
-#         return Response({"error": "Please provide latitude and longitude"}, status=400)
-
+# def get_place_details(place_name):
+#     print('place name : ', place_name)
+    
 #     try:
-#         lat = float(lat)
-#         lng = float(lng)
-#     except ValueError:
-#         return Response({"error": "Latitude and longitude must be numeric"}, status=400)
+#         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{place_name.replace(' ', '_')}"
 
-#     query_url = (
-#         f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-#         f"?location={lat},{lng}&radius=500&type=restaurant&key={API_KEY}"
-#     )
+#         headers = {
+#             'User-Agent': 'TravelPlaceFinder/1.0 (https://app.peopledesk.io/dashboard/employee; shahoraiar574@gmail.com)'
+#         }
+        
+#         # Make the request with headers
+#         response = requests.get(url, headers=headers)
+#         print('response : ', response)
+#         response.raise_for_status()
+        
+#         # Parse the JSON response
+#         data = response.json()
+        
+#         # Extract relevant information
+#         place_details = {
+#             'title': data.get('title', 'N/A'),
+#             'description': data.get('description', 'N/A'),
+#             'extract': data.get('extract', 'N/A')
+#         }
+        
+#         return place_details
+        
+#     except requests.exceptions.HTTPError as e:
+#         if response.status_code == 404:
+#             return {'error': f"Place '{place_name}' not found on Wikipedia"}
+#         return ""
+    
+#     except requests.exceptions.RequestException as e:
+#         return ""
+    
+#     except Exception as e:
+#         return ""
 
-#     return Response({"query_url": query_url})
+
+
+
 
 
 def generate_ai_detailed_itinerary(id):

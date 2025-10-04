@@ -74,6 +74,7 @@ class Itinerary(models.Model):
 class Day(models.Model):
     itinerary = models.ForeignKey(Itinerary, on_delete=models.CASCADE, related_name="days")
     day_number = models.PositiveIntegerField()  
+    visit_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True) 
     

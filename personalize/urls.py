@@ -18,13 +18,14 @@ urlpatterns = [
     path('preferences/generate_day/', generate_day, name='generate_day'),
 
     path('home/all_day_plans/', all_day_plan, name="all_day_plan"),
+    path('home/current-date-plan/', show_current_date_plan, name="show_current_date_plan"),
 
-    path('suggest/restaurant/', nearest_restaurant, name="nearest_restaurant"),
-    path('suggest/hotel/', nearest_hotel, name="nearest_hotel"),
-    path('suggest/art/', nearest_art_places, name="nearest_art_places"),
+    # path('suggest/restaurant/', nearest_restaurant, name="nearest_restaurant"),
+    # path('suggest/hotel/', nearest_hotel, name="nearest_hotel"),
+    # path('suggest/art/', nearest_art_places, name="nearest_art_places"),
 
-    path('nearby-retuarant/', nearby_restaurants, name="nearby_restaurants"),
-    path('restaurant-details/<str:place_id>/', restaurant_details, name="restaurant_details")
+    path('suggest/near_place/', search_near_place, name="search_near_place"),
+    path('place_details/', place_details, name="place_details") 
 
 
     # path('itineraries/<int:itinerary_id>/complete/', complete_itinerary, name='complete-itinerary'),
